@@ -1,4 +1,4 @@
-name: Jump from favorite card to calendar
+name: Connect shared favorites to Supabase
 on:
   push:
     paths:
@@ -12,55 +12,34 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Patch favorite card navigation
+      - name: Patch shared favorites
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
 
-          # Make favorite cards visibly clickable.
-          if '.favcardlink{' not in s:
-              anchor='.favdate{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px}'
-              style='.favcardlink{cursor:pointer}.favcardlink:focus{outline:2px solid var(--accent);outline-offset:2px}'
-              if anchor not in s: raise SystemExit('favorite card style anchor missing')
-              s=s.replace(anchor,anchor+style,1)
+          old="const FAV_KEY='wedding-calendar-card-favorites';let FAV=new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]'));function favId(x){return [x.date,x.venue,x.hall||'',x.time].join('|')}function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));cal();viewMode==='favorites'?renderFavorites():ht()}"
+          new="const SUPABASE_URL='https://diaqqckvgxgqnmzijwjh.supabase.co',SUPABASE_KEY='sb_publishable_PbTUIS2ps9arxJ2yJG1QQA_7rDPFedM',FAV_TABLE='wedding_favorites';let FAV=new Set(),syncBusy=false;function favId(x){return [x.date,x.venue,x.hall||'',x.time].join('|')}function redrawFavorites(){cal();viewMode==='favorites'?renderFavorites():ht()}async function loadSharedFavorites(redraw=true){if(syncBusy)return;syncBusy=true;try{let r=await fetch(`${SUPABASE_URL}/rest/v1/${FAV_TABLE}?select=favorite_id`,{headers:{apikey:SUPABASE_KEY}});if(!r.ok)throw new Error(`load ${r.status}`);let rows=await r.json(),next=new Set(rows.map(x=>x.favorite_id)),changed=next.size!==FAV.size||[...next].some(x=>!FAV.has(x));FAV=next;if(redraw&&changed)redrawFavorites()}catch(e){console.error('shared favorites load failed',e)}finally{syncBusy=false}}async function toggleFav(id){let adding=!FAV.has(id);adding?FAV.add(id):FAV.delete(id);redrawFavorites();try{let url=`${SUPABASE_URL}/rest/v1/${FAV_TABLE}`;let r=adding?await fetch(url,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates'},body:JSON.stringify({favorite_id:id})}):await fetch(`${url}?favorite_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY}});if(!r.ok)throw new Error(`write ${r.status}`);await loadSharedFavorites(true)}catch(e){console.error('shared favorite write failed',e);adding?FAV.delete(id):FAV.add(id);redrawFavorites()}}"
+          if old not in s:
+              raise SystemExit('favorite storage anchor missing')
+          s=s.replace(old,new,1)
 
-          # Add navigation helper before favoriteCard().
-          if 'function openFavoriteCard(' not in s:
-              anchor='function favoriteCard(x){'
-              helper="function openFavoriteCard(id){let x=D.find(q=>favId(q)===id);if(!x)return;let [y,m]=x.date.split('-').map(Number);cur=new Date(y,m-1,1);sd=x.date;sv=x.venue;sh=x.hall||'';viewMode='browse';$('browseTab').classList.add('a');$('favTab').classList.remove('a');$('venueLabel').classList.remove('hidden');$('vt').classList.remove('hidden');$('dl').textContent=sd;cal();vt();let c=$('cal');if(c&&c.scrollIntoView)c.scrollIntoView({behavior:'smooth',block:'center'})}"
-              if anchor not in s: raise SystemExit('favoriteCard anchor missing')
-              s=s.replace(anchor,helper+anchor,1)
-
-          # Add card navigation metadata to the favorite-card root.
-          old='return `<div class="card"><div class="favdate">${x.date}</div>'
-          new='return `<div class="card favcardlink" tabindex="0" role="button" data-open-fav="${encodeURIComponent(id)}"><div class="favdate">${x.date}</div>'
-          if old in s:
-              s=s.replace(old,new,1)
-          elif 'data-open-fav=' not in s:
-              raise SystemExit('favorite card root anchor missing')
-
-          # Extend renderFavorites listeners: heart only toggles, card click/Enter opens matching date/venue/hall.
-          pattern=r"\$\('res'\)\.querySelectorAll\('\.favbtn'\)\.forEach\(b=>b\.onclick=e=>\{e\.stopPropagation\(\);toggleFav\(decodeURIComponent\(b\.dataset\.fav\)\)\}\)\}"
-          repl="$ ('res')"  # placeholder replaced below
-          m=re.search(pattern,s)
-          if m:
-              replacement="$('res').querySelectorAll('.favbtn').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(decodeURIComponent(b.dataset.fav))});$('res').querySelectorAll('[data-open-fav]').forEach(c=>{let go=()=>openFavoriteCard(decodeURIComponent(c.dataset.openFav));c.onclick=e=>{if(!e.target.closest('.favbtn'))go()};c.onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('.favbtn')){e.preventDefault();go()}}})}"
-              s=s[:m.start()]+replacement+s[m.end():]
-          elif "querySelectorAll('[data-open-fav]')" not in s:
-              raise SystemExit('renderFavorites listener anchor missing')
+          old_init="cal();sel(Object.keys(B).sort()[0]);</script>"
+          new_init="async function initSharedFavorites(){await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();</script>"
+          if old_init not in s:
+              raise SystemExit('init anchor missing')
+          s=s.replace(old_init,new_init,1)
 
           p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- favorite-card-jump-20260818-1235 -->\n',encoding='utf-8')
+          Path('latest.html').write_text(s+'\n<!-- shared-favorites-supabase-20260818-1249 -->\n',encoding='utf-8')
           PY
-      - name: Commit favorite-card calendar jump
+      - name: Commit shared favorites
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Jump from favorite card to selected calendar date" || exit 0
+          git commit -m "Use shared Supabase favorites" || exit 0
           git push
