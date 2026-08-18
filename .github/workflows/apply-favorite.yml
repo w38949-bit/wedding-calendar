@@ -1,0 +1,48 @@
+name: Apply favorite button
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-favorite.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch estimate cards only
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          if '.fav-btn{' not in s:
+              s=s.replace('.time{font-weight:800;color:var(--accent-strong);white-space:nowrap}', '.time-wrap{display:flex;align-items:center;gap:8px}.time{font-weight:800;color:var(--accent-strong);white-space:nowrap}.fav-btn{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-size:21px;line-height:1;color:#9a8f86;display:flex;align-items:center;justify-content:center}.fav-btn.active{color:#c9586d;background:#fff5f7;border-color:#e6b2bd}')
+          if "const FAV_KEY='wedding-calendar-favorites-v2';" not in s:
+              s=s.replace("const money = n => n ? n.toLocaleString('ko-KR') + '원' : '-';", "const money = n => n ? n.toLocaleString('ko-KR') + '원' : '-';\nconst FAV_KEY='wedding-calendar-favorites-v2';\nlet favorites=new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]'));\nconst favId=x=>[x.date,x.venue,x.hall||'',x.time].join('|');\nfunction saveFavorites(){localStorage.setItem(FAV_KEY,JSON.stringify([...favorites]));}\nfunction toggleFavorite(id){favorites.has(id)?favorites.delete(id):favorites.add(id);saveFavorites();renderResults();}")
+          new_res = r'''function renderResults(){
+            const items=(byDate[selectedDate]||[])
+              .filter(x=>x.venue===selectedVenue && (selectedHall ? x.hall===selectedHall : !x.hall))
+              .sort((a,b)=>a.time.localeCompare(b.time,'ko'));
+            if(!items.length){results.innerHTML='<div class="empty-state">조건에 맞는 정보가 없습니다.</div>';return;}
+            results.innerHTML = items.map(x => {
+              const id=favId(x), fav=favorites.has(id);
+              return `<div class="card"><div class="card-top"><h3>${x.hall ? `${x.venue} · ${x.hall}` : x.venue}</h3><div class="time-wrap"><div class="time">${x.time}</div><button class="fav-btn ${fav?'active':''}" data-fav="${encodeURIComponent(id)}" title="찜하기" aria-label="찜하기">${fav?'♥':'♡'}</button></div></div><div class="grid"><div class="stat"><span>대관비</span><b>${money(x.rental)}</b></div><div class="stat"><span>보증인원</span><b>${x.guarantee ? x.guarantee+'명' : '미제공'}</b></div><div class="stat" style="grid-column:1/-1"><span>식대</span><b>${x.meal}</b></div></div><div class="total"><span>350명 예상총액</span><b>${money(x.total350)}</b></div>${x.note ? `<div class="note">${x.note}</div>` : ''}</div>`;
+            }).join('');
+            results.querySelectorAll('.fav-btn').forEach(btn=>{btn.onclick=(e)=>{e.stopPropagation();toggleFavorite(decodeURIComponent(btn.dataset.fav));};});
+          }
+          '''
+          s2, n = re.subn(r'function renderResults\(\)\{.*?\n\}\n\ndocument\.getElementById\(\'prevBtn\'\)', new_res + "\ndocument.getElementById('prevBtn')", s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('renderResults patch failed')
+          p.write_text(s2, encoding='utf-8')
+          PY
+      - name: Commit patched page
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add index.html
+          git commit -m "Add favorite button to estimate cards" || exit 0
+          git push
