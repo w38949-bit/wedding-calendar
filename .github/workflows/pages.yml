@@ -35,4 +35,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-# deploy-refresh: wedding-photos-20260818-2151
+# deploy-refresh: grand-moment-photo-refresh-20260818-2157
