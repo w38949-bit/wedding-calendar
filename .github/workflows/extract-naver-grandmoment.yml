@@ -1,0 +1,108 @@
+name: Extract Naver Grand Moment photos
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/extract-naver-grandmoment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Extract Naver post text and images
+        shell: bash
+        run: |
+          python -m pip install --quiet requests beautifulsoup4 lxml
+          python - <<'PY'
+          import requests, re, json, urllib.parse
+          from bs4 import BeautifulSoup, NavigableString, Tag
+
+          blog_id='qorrkdnjs'
+          log_no='223451943421'
+          target=f'https://blog.naver.com/PostView.naver?blogId={blog_id}&logNo={log_no}'
+          proxies=[
+            'https://naver-img-proxy.5126537.workers.dev/?url='+urllib.parse.quote(target,safe=''),
+            'https://api.allorigins.win/raw?url='+urllib.parse.quote(target,safe=''),
+            'https://api.codetabs.com/v1/proxy?quest='+urllib.parse.quote(target,safe=''),
+          ]
+          html=None; used=None; errors=[]
+          headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+          for u in proxies:
+            try:
+              r=requests.get(u,headers=headers,timeout=30)
+              if r.ok and len(r.text)>5000:
+                html=r.text; used=u.split('?')[0]; break
+              errors.append(f'{u.split("?")[0]} status={r.status_code} len={len(r.text)}')
+            except Exception as e:
+              errors.append(f'{u.split("?")[0]} {e!r}')
+          if not html:
+            raise SystemExit('fetch failed: '+ ' | '.join(errors))
+
+          soup=BeautifulSoup(html,'lxml')
+          root=soup.select_one('.se-main-container') or soup.select_one('#postViewArea') or soup.body or soup
+          hall_names=['시그니처홀','베일홀','클래식홀','엘라홀','화이트홀']
+          current='미분류'
+          items=[]
+          seen=set()
+
+          def img_url(tag):
+            for k in ('data-lazy-src','data-src','src'):
+              v=tag.get(k)
+              if v and not v.startswith('data:'):
+                if v.startswith('//'): v='https:'+v
+                return v
+            return None
+
+          # Walk descendants in document order; update current hall when text mentions it,
+          # then assign following images until another hall name appears.
+          for node in root.descendants:
+            if isinstance(node, NavigableString):
+              t=' '.join(str(node).split())
+              if not t: continue
+              for h in hall_names:
+                if h in t:
+                  current=h
+                  items.append({'type':'text','hall':current,'text':t[:300]})
+                  break
+            elif isinstance(node, Tag) and node.name=='img':
+              u=img_url(node)
+              if not u or u in seen: continue
+              seen.add(u)
+              alt=' '.join((node.get('alt') or '').split())
+              items.append({'type':'image','hall':current,'url':u,'alt':alt[:200]})
+
+          # Also collect SmartEditor image metadata URLs that may not appear as img src.
+          raw_urls=[]
+          for m in re.finditer(r'https?://[^\"\'<> ]+(?:\.jpg|\.jpeg|\.png|\.gif|\.webp)(?:\?[^\"\'<> ]*)?', html, re.I):
+            u=m.group(0).replace('\\u0026','&')
+            if ('pstatic.net' in u or 'blogfiles' in u or 'postfiles' in u or 'naver' in u) and u not in seen:
+              seen.add(u); raw_urls.append(u)
+
+          out={
+            'source':'https://m.blog.naver.com/qorrkdnjs/223451943421',
+            'used_proxy':used,
+            'counts':{h:sum(1 for x in items if x.get('type')=='image' and x.get('hall')==h) for h in ['미분류']+hall_names},
+            'items':items,
+            'extra_image_urls':raw_urls[:200],
+          }
+          with open('naver-grandmoment-extract.json','w',encoding='utf-8') as f:
+            json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps(out['counts'],ensure_ascii=False))
+          PY
+      - name: Commit extraction
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add naver-grandmoment-extract.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Extract provided Naver Grand Moment post photos'
+          git push origin main
