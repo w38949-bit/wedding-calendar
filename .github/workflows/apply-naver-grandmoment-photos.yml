@@ -33,13 +33,12 @@ jobs:
           for x in data['items']:
             if x.get('type')=='image' and x.get('hall') in extra:
               u=x['url']
-              # Request a larger Naver rendition where possible.
               u=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',u)
               if u not in extra[x['hall']]: extra[x['hall']].append(u)
 
           marker_start='/* NAVER_GRANDMOMENT_EXTRA_START */'
           marker_end='/* NAVER_GRANDMOMENT_EXTRA_END */'
-          block=marker_start+'\n'+f"const NAVER_GM_SOURCE={json.dumps(source,ensure_ascii=False)};\n"+f"const NAVER_GM_EXTRA={json.dumps(extra,ensure_ascii=False)};\n"+"Object.entries(NAVER_GM_EXTRA).forEach(([h,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][h];if(g){g.extraSource=NAVER_GM_SOURCE;g.extraImgs=[...new Set([...(g.extraImgs||[]),...imgs])]}});\n"+marker_end
+          block=marker_start+'\n'+f"const NAVER_GM_SOURCE={json.dumps(source,ensure_ascii=False)};\n"+f"const NAVER_GM_EXTRA={json.dumps(extra,ensure_ascii=False)};\n"+"Object.entries(NAVER_GM_EXTRA).forEach(([h,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][h];if(g){g.extraSource=NAVER_GM_SOURCE;g.extraImgs=[...new Set(imgs)]}});\n"+marker_end
           if marker_start in s:
             s=re.sub(re.escape(marker_start)+r'.*?'+re.escape(marker_end),block,s,flags=re.S)
           else:
@@ -68,7 +67,7 @@ jobs:
           from pathlib import Path
           for name in ('index.html','latest.html'):
             p=Path(name); s=p.read_text(encoding='utf-8')
-            s=re.sub(r'photos\.js\?v=[^\"\']+', 'photos.js?v=20260818-2245', s)
+            s=re.sub(r'photos\.js\?v=[^\"\']+', 'photos.js?v=20260818-2250', s)
             p.write_text(s,encoding='utf-8')
           PY
       - name: Commit imported photos
