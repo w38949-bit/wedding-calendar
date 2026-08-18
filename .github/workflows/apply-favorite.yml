@@ -1,4 +1,4 @@
-name: Apply favorite button
+name: Fix calendar date and favorite cards
 on:
   push:
     paths:
@@ -10,44 +10,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch estimate cards only
+      - name: Fix Saturday date generation and preserve favorite cards
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
-
-          p = Path('index.html')
-          s = p.read_text(encoding='utf-8')
-
-          # CSS: estimate-card favorite button only. Do not touch calendar CSS/rendering.
-          old_css = '.cardhead{display:flex;justify-content:space-between;gap:10px}.time{font-weight:800;color:var(--strong)}'
-          new_css = '.cardhead{display:flex;justify-content:space-between;gap:10px;align-items:center}.cardright{display:flex;align-items:center;gap:8px}.time{font-weight:800;color:var(--strong)}.favbtn{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-size:21px;line-height:1;color:#9a8f86;display:inline-flex;align-items:center;justify-content:center;padding:0}.favbtn.on{color:#c9586d;background:#fff5f7;border-color:#e6b2bd}'
-          if '.favbtn{' not in s:
-              if old_css not in s:
-                  raise SystemExit('CSS anchor not found')
-              s = s.replace(old_css, new_css, 1)
-
-          # localStorage helpers. One favorite per date + venue + hall + time quote card.
-          if "wedding-calendar-card-favorites" not in s:
-              anchor = 'const B={};'
-              helpers = "const FAV_KEY='wedding-calendar-card-favorites';let FAV=new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]'));function favId(x){return [x.date,x.venue,x.hall||'',x.time].join('|')}function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res()}"
-              if anchor not in s:
-                  raise SystemExit('data anchor not found')
-              s = s.replace(anchor, helpers + anchor, 1)
-
-          # Replace ONLY the estimate-card renderer. Calendar renderer is untouched.
-          new_res = r'''function res(){let a=B[sd].filter(x=>x.venue===sv&&(sh?x.hall===sh:!x.hall)).sort((a,b)=>a.time.localeCompare(b.time,'ko'));$('res').innerHTML=a.map(x=>{let id=favId(x),on=FAV.has(id);return `<div class="card"><div class="cardhead"><b>${x.hall?`${x.venue} · ${x.hall}`:x.venue}</b><div class="cardright"><div class="time">${x.time}</div><button class="favbtn ${on?'on':''}" data-fav="${encodeURIComponent(id)}" type="button" title="찜하기" aria-label="찜하기">${on?'♥':'♡'}</button></div></div><div class="row"><div class="s"><span>대관비</span><b>${M(x.rental)}</b></div><div class="s"><span>보증인원</span><b>${x.guarantee?x.guarantee+'명':'미제공'}</b></div><div class="s meal"><span>식대</span><b>${x.meal}</b></div></div><div class="total"><span>350명 예상총액</span><b>${x.total==null?'대관비 확인 필요':M(x.total)}</b></div>${x.note?`<div class="note">${x.note}</div>`:''}</div>`}).join('');$('res').querySelectorAll('.favbtn').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(decodeURIComponent(b.dataset.fav))})}'''
-          s2, n = re.subn(r"function res\(\)\{.*?\}\s*\$\('pv'\)", new_res + "$('pv')", s, count=1, flags=re.S)
-          if n != 1:
-              raise SystemExit('estimate renderer anchor not found')
-
-          p.write_text(s2, encoding='utf-8')
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old="function sat(a,b){let x=new Date(a+'T00:00:00'),z=new Date(b+'T00:00:00'),r=[];while(x.getDay()!=6)x.setDate(x.getDate()+1);for(;x<=z;x.setDate(x.getDate()+7))r.push(x.toISOString().slice(0,10));return r}"
+          new="function sat(a,b){let x=new Date(a+'T00:00:00'),z=new Date(b+'T00:00:00'),r=[];while(x.getDay()!=6)x.setDate(x.getDate()+1);for(;x<=z;x.setDate(x.getDate()+7)){let y=x.getFullYear(),m=String(x.getMonth()+1).padStart(2,'0'),d=String(x.getDate()).padStart(2,'0');r.push(`${y}-${m}-${d}`)}return r}"
+          if old not in s:
+              raise SystemExit('sat function anchor not found')
+          s=s.replace(old,new,1)
+          if '.favbtn{' not in s or "wedding-calendar-card-favorites" not in s or 'data-fav=' not in s:
+              raise SystemExit('favorite card code missing; refusing partial deploy')
+          p.write_text(s,encoding='utf-8')
           PY
-      - name: Commit patched page
+      - name: Commit fixed page
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html
-          git commit -m "Add favorite buttons to quote cards" || exit 0
+          git commit -m "Fix Saturday calendar dates and keep card favorites" || exit 0
           git push
