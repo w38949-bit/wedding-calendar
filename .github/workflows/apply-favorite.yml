@@ -1,4 +1,4 @@
-name: Add favorite markers to calendar
+name: Try favorite count and venue color markers
 on:
   push:
     paths:
@@ -10,54 +10,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch favorite date markers only
+      - name: Patch calendar favorite summary only
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
 
-          # 1) Add a small pink dot style inside calendar cells.
-          if '.favdot{' not in s:
-              anchor='.count{position:absolute;left:8px;bottom:7px;color:var(--muted);font-size:11px}'
-              repl=anchor+'.favdot{position:absolute;right:9px;bottom:9px;width:9px;height:9px;border-radius:50%;background:#d85f78;box-shadow:0 0 0 3px #fff}'
-              if anchor not in s: raise SystemExit('calendar CSS anchor missing')
-              s=s.replace(anchor,repl,1)
+          # Calendar favorite summary styles. Existing layout/date logic stays unchanged.
+          if '.favsummary{' not in s:
+              anchor='.favdot{position:absolute;right:9px;bottom:9px;width:9px;height:9px;border-radius:50%;background:#d85f78;box-shadow:0 0 0 3px #fff}'
+              styles='.favsummary{position:absolute;right:7px;bottom:6px;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.favcount{font-size:11px;font-weight:800;color:#c9586d;line-height:1}.favvenues{display:flex;gap:3px}.venue-dot{width:8px;height:8px;border-radius:50%;display:block;box-shadow:0 0 0 1px rgba(255,255,255,.95)}'
+              if anchor in s:
+                  s=s.replace(anchor,styles,1)
+              else:
+                  count='.count{position:absolute;left:8px;bottom:7px;color:var(--muted);font-size:11px}'
+                  if count not in s: raise SystemExit('calendar css anchor missing')
+                  s=s.replace(count,count+styles,1)
 
-          # 2) Re-render calendar immediately after favorite toggle.
-          old="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res()}"
-          new="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res();cal()}"
-          if old in s:
-              s=s.replace(old,new,1)
-          elif new not in s:
-              raise SystemExit('toggleFav anchor missing')
-
-          # 3) Add helper: a date is marked when at least one quote on that date is favorited.
-          if 'function dateHasFav(ds)' not in s:
-              anchor='const B={};'
-              helper="function dateHasFav(ds){return (B[ds]||[]).some(x=>FAV.has(favId(x)))}"
-              if anchor not in s: raise SystemExit('B anchor missing')
-              s=s.replace(anchor,anchor,1)
-              # helper must come after B exists, so insert after B population line instead.
+          # Replace the old boolean marker helper with detailed favorite summary helpers.
+          s=re.sub(r"function dateHasFav\(ds\)\{.*?\}","function favQuotes(ds){return (B[ds]||[]).filter(x=>FAV.has(favId(x)))}function favVenues(ds){return [...new Set(favQuotes(ds).map(x=>x.venue))]}function venueColor(v){return ({'그랜드 모먼트':'#8b6b55','그랜드 블랑':'#5f83b8','센텀사이언스':'#5f9b78','해운대 마리나컨벤션':'#d36f91'})[v]||'#9b8bb5'}",s,count=1)
+          if 'function favQuotes(ds)' not in s:
               pop="D.forEach(x=>(B[x.date]??=[]).push(x));"
               if pop not in s: raise SystemExit('B population anchor missing')
-              s=s.replace(pop,pop+helper,1)
+              s=s.replace(pop,pop+"function favQuotes(ds){return (B[ds]||[]).filter(x=>FAV.has(favId(x)))}function favVenues(ds){return [...new Set(favQuotes(ds).map(x=>x.venue))]}function venueColor(v){return ({'그랜드 모먼트':'#8b6b55','그랜드 블랑':'#5f83b8','센텀사이언스':'#5f9b78','해운대 마리나컨벤션':'#d36f91'})[v]||'#9b8bb5'}",1)
 
-          # 4) Add dot to each calendar date cell without changing weekday/date logic.
-          old="e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}`;"
-          new="e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}${dateHasFav(ds)?'<span class=\"favdot\" title=\"찜한 견적 있음\"></span>':''}`;"
-          if old in s:
-              s=s.replace(old,new,1)
-          elif 'favdot' not in s.split('function cal(){',1)[-1]:
-              raise SystemExit('calendar cell anchor missing')
+          # Replace only the calendar cell HTML. Do not change weekday/date calculations.
+          pattern=r"e\.innerHTML=`<b>\$\{n\}</b>\$\{B\[ds\]\?`<div class=\\?\"count\\?\">\$\{new Set\(B\[ds\]\.map\(x=>x\.venue\)\)\.size\}곳</div>`:''\}.*?`;e\.onclick"
+          repl="let fq=favQuotes(ds),fv=favVenues(ds);e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}${fq.length?`<div class=\"favsummary\"><div class=\"favcount\">♥ ${fq.length}</div><div class=\"favvenues\">${fv.map(v=>`<span class=\"venue-dot\" style=\"background:${venueColor(v)}\" title=\"${v}\"></span>`).join('')}</div></div>`:''}`;e.onclick"
+          s2,n=re.subn(pattern,repl,s,count=1)
+          if n!=1:
+              raise SystemExit('calendar cell patch failed')
+          s=s2
 
           p.write_text(s,encoding='utf-8')
+
+          # Refresh cache-busting entry page in the same commit.
+          Path('latest.html').write_text('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>웨딩홀 비교 달력</title></head><body><script>location.replace(\'./index.html?v=fav-summary-1\');</script><p><a href="./index.html?v=fav-summary-1">최신 웨딩홀 비교 달력 열기</a></p></body></html>',encoding='utf-8')
           PY
-      - name: Commit favorite markers
+      - name: Commit trial favorite summary
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add index.html
-          git commit -m "Show favorited quote dates on calendar" || exit 0
+          git add index.html latest.html
+          git commit -m "Show favorite counts and venue colors on calendar" || exit 0
           git push
