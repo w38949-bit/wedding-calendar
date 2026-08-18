@@ -73,14 +73,12 @@ jobs:
           block_end='/* NAVER_GRANDMOMENT_LOCAL_END */'
           data={h:[path for path in paths] for h,paths in m['halls'].items()}
           block=block_start+'\n'+f"const NAVER_GM_LOCAL_SOURCE={json.dumps(m['source'],ensure_ascii=False)};\n"+f"const NAVER_GM_LOCAL={json.dumps(data,ensure_ascii=False)};\n"+"Object.entries(NAVER_GM_LOCAL).forEach(([h,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][h];if(g){g.localSource=NAVER_GM_LOCAL_SOURCE;g.localImgs=imgs}});\n"+block_end
-          # remove previous remote extra block entirely
           s=re.sub(r'/\* NAVER_GRANDMOMENT_EXTRA_START \*/.*?/\* NAVER_GRANDMOMENT_EXTRA_END \*/\n?', '', s, flags=re.S)
           if block_start in s:
             s=re.sub(re.escape(block_start)+r'.*?'+re.escape(block_end),block,s,flags=re.S)
           else:
             anchor='\n\nconst style=document.createElement(\'style\');'
             s=s.replace(anchor,'\n\n'+block+anchor,1)
-          # gallery entry list: original + local downloaded images
           s=s.replace("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source}))];const count=entries.length;",
                       "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source}))];const count=entries.length;")
           if "const count=g.imgs.length;" in s:
@@ -88,7 +86,7 @@ jobs:
           p.write_text(s,encoding='utf-8')
           for name in ('index.html','latest.html'):
             q=Path(name); t=q.read_text(encoding='utf-8')
-            t=re.sub(r'photos\.js\?v=[^\"\']+','photos.js?v=20260818-2302',t)
+            t=re.sub(r'photos\.js\?v=[^\"\']+','photos.js?v=20260818-2310',t)
             q.write_text(t,encoding='utf-8')
           PY
       - name: Commit downloaded images and gallery update
@@ -100,3 +98,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'Store provided Naver Grand Moment photos locally'
           git push origin main
+
+# force-run: 20260818-2310
