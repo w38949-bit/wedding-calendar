@@ -1,4 +1,4 @@
-name: Fix July Signature Hall price
+name: Add Grand Moment meal totals
 on:
   push:
     paths:
@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Fix July Signature Hall 15:00+ price
+      - name: Add separate buffet and steak totals
         shell: bash
         run: |
           python - <<'PY'
@@ -20,18 +20,32 @@ jobs:
 
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          old="gm(sat('2027-07-03','2027-07-11'),{'시그니처홀':[['14:00',2000000],['15:00 이후',10000000]]"
-          new="gm(sat('2027-07-03','2027-07-11'),{'시그니처홀':[['14:00',2000000],['15:00 이후',1000000]]"
-          if old not in s:
-              raise SystemExit('July Signature Hall price anchor missing')
-          s=s.replace(old,new,1)
+
+          style_anchor='.total b{display:block;font-size:20px;color:var(--strong)}'
+          style_add='.gm-totals{display:grid;grid-template-columns:1fr 1fr;gap:8px}.gm-total-item{background:#fff8f3;border-radius:10px;padding:9px}.gm-total-item small{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}.gm-total-item b{font-size:17px}'
+          if style_add not in s:
+              if style_anchor not in s: raise SystemExit('total style anchor missing')
+              s=s.replace(style_anchor,style_anchor+style_add,1)
+
+          helper_anchor='function favoriteCard(x){'
+          helper="function totalBlock(x){if(x.venue==='그랜드 모먼트'){let ps=[...x.meal.matchAll(/\\d[\\d,]*/g)].map(m=>+m[0].replaceAll(',',''));if(x.rental!=null&&ps.length>=2){let buffet=x.rental+350*ps[0],steak=x.rental+350*ps[1];return `<div class=\"total\"><span>350명 예상총액</span><div class=\"gm-totals\"><div class=\"gm-total-item\"><small>뷔페 기준</small><b>${M(buffet)}</b></div><div class=\"gm-total-item\"><small>스테이크 기준</small><b>${M(steak)}</b></div></div></div>`}}return `<div class=\"total\"><span>350명 예상총액</span><b>${x.total==null?'대관비 확인 필요':M(x.total)}</b></div>`}"
+          if 'function totalBlock(x)' not in s:
+              if helper_anchor not in s: raise SystemExit('favoriteCard anchor missing')
+              s=s.replace(helper_anchor,helper+helper_anchor,1)
+
+          old='<div class="total"><span>350명 예상총액</span><b>${x.total==null?\'대관비 확인 필요\':M(x.total)}</b></div>'
+          count=s.count(old)
+          if count < 2 and '${totalBlock(x)}' not in s:
+              raise SystemExit(f'expected total blocks not found: {count}')
+          s=s.replace(old,'${totalBlock(x)}')
+
           p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- july-signature-fix-20260818-1322 -->\n',encoding='utf-8')
+          Path('latest.html').write_text(s+'\n<!-- grand-moment-split-totals-20260818-1325 -->\n',encoding='utf-8')
           PY
-      - name: Commit July Signature Hall price fix
+      - name: Commit Grand Moment split totals
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Set July Signature Hall 15:00+ to 1,000,000 won" || exit 0
+          git commit -m "Show Grand Moment buffet and steak totals separately" || exit 0
           git push
