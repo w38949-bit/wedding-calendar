@@ -1,4 +1,4 @@
-name: Connect shared favorites to Supabase
+name: Migrate existing favorites into shared database
 on:
   push:
     paths:
@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Patch shared favorites
+      - name: Add legacy favorite migration
         shell: bash
         run: |
           python - <<'PY'
@@ -21,25 +21,19 @@ jobs:
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
 
-          old="const FAV_KEY='wedding-calendar-card-favorites';let FAV=new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]'));function favId(x){return [x.date,x.venue,x.hall||'',x.time].join('|')}function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));cal();viewMode==='favorites'?renderFavorites():ht()}"
-          new="const SUPABASE_URL='https://diaqqckvgxgqnmzijwjh.supabase.co',SUPABASE_KEY='sb_publishable_PbTUIS2ps9arxJ2yJG1QQA_7rDPFedM',FAV_TABLE='wedding_favorites';let FAV=new Set(),syncBusy=false;function favId(x){return [x.date,x.venue,x.hall||'',x.time].join('|')}function redrawFavorites(){cal();viewMode==='favorites'?renderFavorites():ht()}async function loadSharedFavorites(redraw=true){if(syncBusy)return;syncBusy=true;try{let r=await fetch(`${SUPABASE_URL}/rest/v1/${FAV_TABLE}?select=favorite_id`,{headers:{apikey:SUPABASE_KEY}});if(!r.ok)throw new Error(`load ${r.status}`);let rows=await r.json(),next=new Set(rows.map(x=>x.favorite_id)),changed=next.size!==FAV.size||[...next].some(x=>!FAV.has(x));FAV=next;if(redraw&&changed)redrawFavorites()}catch(e){console.error('shared favorites load failed',e)}finally{syncBusy=false}}async function toggleFav(id){let adding=!FAV.has(id);adding?FAV.add(id):FAV.delete(id);redrawFavorites();try{let url=`${SUPABASE_URL}/rest/v1/${FAV_TABLE}`;let r=adding?await fetch(url,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates'},body:JSON.stringify({favorite_id:id})}):await fetch(`${url}?favorite_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY}});if(!r.ok)throw new Error(`write ${r.status}`);await loadSharedFavorites(true)}catch(e){console.error('shared favorite write failed',e);adding?FAV.delete(id):FAV.add(id);redrawFavorites()}}"
+          old="async function initSharedFavorites(){await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();"
+          new="async function migrateLegacyFavorites(){try{let raw=localStorage.getItem('wedding-calendar-card-favorites');if(!raw)return;let old=JSON.parse(raw);if(!Array.isArray(old)||!old.length){localStorage.removeItem('wedding-calendar-card-favorites');return}let r=await fetch(`${SUPABASE_URL}/rest/v1/${FAV_TABLE}`,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates'},body:JSON.stringify(old.map(favorite_id=>({favorite_id})))});if(!r.ok)throw new Error(`migration ${r.status}`);localStorage.removeItem('wedding-calendar-card-favorites')}catch(e){console.error('legacy favorite migration failed',e)}}async function initSharedFavorites(){await migrateLegacyFavorites();await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();"
           if old not in s:
-              raise SystemExit('favorite storage anchor missing')
+              raise SystemExit('shared init anchor missing')
           s=s.replace(old,new,1)
 
-          old_init="cal();sel(Object.keys(B).sort()[0]);</script>"
-          new_init="async function initSharedFavorites(){await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();</script>"
-          if old_init not in s:
-              raise SystemExit('init anchor missing')
-          s=s.replace(old_init,new_init,1)
-
           p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- shared-favorites-supabase-20260818-1249 -->\n',encoding='utf-8')
+          Path('latest.html').write_text(s+'\n<!-- shared-favorites-legacy-migration-20260818-1250 -->\n',encoding='utf-8')
           PY
-      - name: Commit shared favorites
+      - name: Commit legacy favorite migration
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Use shared Supabase favorites" || exit 0
+          git commit -m "Migrate local favorites to shared Supabase" || exit 0
           git push
