@@ -2,12 +2,12 @@
   "source": "https://m.blog.naver.com/qorrkdnjs/223451943421",
   "used_proxy": "https://naver-img-proxy.5126537.workers.dev/",
   "counts": {
-    "미분류": 7,
+    "미분류": 3,
     "시그니처홀": 6,
-    "베일홀": 6,
-    "클래식홀": 0,
+    "베일홀": 4,
+    "클래식홀": 4,
     "엘라홀": 4,
-    "화이트홀": 0
+    "화이트홀": 2
   },
   "items": [
     {
@@ -29,26 +29,36 @@
       "alt": ""
     },
     {
+      "type": "text",
+      "hall": "클래식홀",
+      "text": "1_클래식 홀(B4층)"
+    },
+    {
       "type": "image",
-      "hall": "미분류",
+      "hall": "클래식홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MTlfMjAz/MDAxNzE2MTMwNTU0OTE5.GVtPew6Dc5jr5Ec_bV_jvlkJMlWGqNq0Sp6zPwETsngg.b9pY3v5ADiVMkrUfwLvrO0rDjpKDYQ7ah_tdNdUmxTUg.JPEG/SE-f3be011d-01f5-45b2-b72f-19e482102fdb.jpg?type=w773",
       "alt": ""
     },
     {
+      "type": "text",
+      "hall": "클래식홀",
+      "text": "'클래식 홀'은 화이트와 우드의 조화다."
+    },
+    {
       "type": "image",
-      "hall": "미분류",
+      "hall": "클래식홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MjBfMjcg/MDAxNzE2MTMxMTMyODYw.lE6dCuU_PONSCvRRJrn9kwepXLFC22fJY2i465m1O9Eg._DcFwPQgdbsC_ekX3R_37sm576KKJLj2gQBvwu_WMWgg.JPEG/SE-782e354d-86df-496e-8d57-7ce2c8996e62.jpg?type=w773",
       "alt": ""
     },
     {
       "type": "image",
-      "hall": "미분류",
+      "hall": "클래식홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MjBfMjIg/MDAxNzE2MTMxMjc2ODg4.tC_Qflr1izQcCapl_d7uekGj49bPf4LG4FwL0Fph-5Ug.42NtHy7-yjmOFIXUtXUFK6kHogydC47zJnMBTu0ersYg.JPEG/SE-37c1fcf6-62b1-4b26-b667-9341300c78ef.jpg?type=w386",
       "alt": ""
     },
     {
       "type": "image",
-      "hall": "미분류",
+      "hall": "클래식홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MjBfMjIy/MDAxNzE2MTMxMzE2Mjcw.xLuKt-j2i7UJrsIY0sWhJ5v_YoEsfI6aR_Hc36Qu4x4g.yZIJewSIHa6EqnCOar3hO4Pk134jDh64I8nLjecrteEg.JPEG/SE-b7cb60cc-8f6a-4625-905a-118964aef97f.jpg?type=w386",
       "alt": ""
     },
@@ -126,14 +136,19 @@
       "alt": ""
     },
     {
+      "type": "text",
+      "hall": "화이트홀",
+      "text": "분명 화이트 홀 느낌인데, 버진로드와 벽면이 블랙이라 안이쁘다 느꼈다."
+    },
+    {
       "type": "image",
-      "hall": "베일홀",
+      "hall": "화이트홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MjBfMjM4/MDAxNzE2MTMyMTY5MjYz.XeK3EBjgKvCMtDIlz5UzV9DJshtdeLKyaliB596gqvUg.POwP0KII2aarkkgsEmsZoSg2cpYtTPWpwCJ89r6UtaMg.JPEG/KakaoTalk_Photo_2024-05-02-03-08-27_008.jpeg?type=w773",
       "alt": ""
     },
     {
       "type": "image",
-      "hall": "베일홀",
+      "hall": "화이트홀",
       "url": "https://postfiles.pstatic.net/MjAyNDA1MjBfMTU4/MDAxNzE2MTMyODEyMjk0.-2rYhmPfclxYSMy0arI1eE0gQBdV18kPFHvIstisU3Yg.yH_op3lWM3dKLVSYOjmJ24ZxotOOJf7voJrMahOYgb4g.JPEG/IMG_8479.jpg?type=w773",
       "alt": ""
     },
