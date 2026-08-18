@@ -48,7 +48,8 @@ jobs:
 
           soup=BeautifulSoup(html,'lxml')
           root=soup.select_one('.se-main-container') or soup.select_one('#postViewArea') or soup.body or soup
-          hall_names=['시그니처홀','베일홀','클래식홀','엘라홀','화이트홀']
+          aliases=[('시그니처홀',['시그니처홀','시그니처']),('베일홀',['베일홀','베일']),('클래식홀',['클래식홀','클래식']),('엘라홀',['엘라홀','엘라']),('화이트홀',['화이트홀','화이트'])]
+          hall_names=[x[0] for x in aliases]
           current='미분류'
           items=[]
           seen=set()
@@ -69,9 +70,9 @@ jobs:
               t=' '.join(str(node).split())
               if not t: continue
               nt=norm(t)
-              for h in hall_names:
-                if norm(h) in nt:
-                  current=h
+              for hall,names in aliases:
+                if any(norm(a) in nt for a in names):
+                  current=hall
                   items.append({'type':'text','hall':current,'text':t[:300]})
                   break
             elif isinstance(node, Tag) and node.name=='img':
