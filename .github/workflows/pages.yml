@@ -35,4 +35,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-# deploy-refresh: favorites-tab-20260818-1232
+# deploy-refresh: shared-favorites-20260818-1249
