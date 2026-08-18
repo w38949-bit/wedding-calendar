@@ -1,4 +1,4 @@
-name: Fix calendar date and favorite cards
+name: Add favorite markers to calendar
 on:
   push:
     paths:
@@ -10,26 +10,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fix Saturday date generation and preserve favorite cards
+      - name: Patch favorite date markers only
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          old="function sat(a,b){let x=new Date(a+'T00:00:00'),z=new Date(b+'T00:00:00'),r=[];while(x.getDay()!=6)x.setDate(x.getDate()+1);for(;x<=z;x.setDate(x.getDate()+7))r.push(x.toISOString().slice(0,10));return r}"
-          new="function sat(a,b){let x=new Date(a+'T00:00:00'),z=new Date(b+'T00:00:00'),r=[];while(x.getDay()!=6)x.setDate(x.getDate()+1);for(;x<=z;x.setDate(x.getDate()+7)){let y=x.getFullYear(),m=String(x.getMonth()+1).padStart(2,'0'),d=String(x.getDate()).padStart(2,'0');r.push(`${y}-${m}-${d}`)}return r}"
-          if old not in s:
-              raise SystemExit('sat function anchor not found')
-          s=s.replace(old,new,1)
-          if '.favbtn{' not in s or "wedding-calendar-card-favorites" not in s or 'data-fav=' not in s:
-              raise SystemExit('favorite card code missing; refusing partial deploy')
+
+          # 1) Add a small pink dot style inside calendar cells.
+          if '.favdot{' not in s:
+              anchor='.count{position:absolute;left:8px;bottom:7px;color:var(--muted);font-size:11px}'
+              repl=anchor+'.favdot{position:absolute;right:9px;bottom:9px;width:9px;height:9px;border-radius:50%;background:#d85f78;box-shadow:0 0 0 3px #fff}'
+              if anchor not in s: raise SystemExit('calendar CSS anchor missing')
+              s=s.replace(anchor,repl,1)
+
+          # 2) Re-render calendar immediately after favorite toggle.
+          old="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res()}"
+          new="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res();cal()}"
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('toggleFav anchor missing')
+
+          # 3) Add helper: a date is marked when at least one quote on that date is favorited.
+          if 'function dateHasFav(ds)' not in s:
+              anchor='const B={};'
+              helper="function dateHasFav(ds){return (B[ds]||[]).some(x=>FAV.has(favId(x)))}"
+              if anchor not in s: raise SystemExit('B anchor missing')
+              s=s.replace(anchor,anchor,1)
+              # helper must come after B exists, so insert after B population line instead.
+              pop="D.forEach(x=>(B[x.date]??=[]).push(x));"
+              if pop not in s: raise SystemExit('B population anchor missing')
+              s=s.replace(pop,pop+helper,1)
+
+          # 4) Add dot to each calendar date cell without changing weekday/date logic.
+          old="e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}`;"
+          new="e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}${dateHasFav(ds)?'<span class=\"favdot\" title=\"찜한 견적 있음\"></span>':''}`;"
+          if old in s:
+              s=s.replace(old,new,1)
+          elif 'favdot' not in s.split('function cal(){',1)[-1]:
+              raise SystemExit('calendar cell anchor missing')
+
           p.write_text(s,encoding='utf-8')
           PY
-      - name: Commit fixed page
+      - name: Commit favorite markers
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html
-          git commit -m "Fix Saturday calendar dates and keep card favorites" || exit 0
+          git commit -m "Show favorited quote dates on calendar" || exit 0
           git push
