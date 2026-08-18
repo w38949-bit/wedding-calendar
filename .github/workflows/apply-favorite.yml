@@ -1,4 +1,4 @@
-name: Migrate existing favorites into shared database
+name: Fix July Signature Hall price
 on:
   push:
     paths:
@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Add legacy favorite migration
+      - name: Fix July Signature Hall 15:00+ price
         shell: bash
         run: |
           python - <<'PY'
@@ -20,20 +20,18 @@ jobs:
 
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-
-          old="async function initSharedFavorites(){await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();"
-          new="async function migrateLegacyFavorites(){try{let raw=localStorage.getItem('wedding-calendar-card-favorites');if(!raw)return;let old=JSON.parse(raw);if(!Array.isArray(old)||!old.length){localStorage.removeItem('wedding-calendar-card-favorites');return}let r=await fetch(`${SUPABASE_URL}/rest/v1/${FAV_TABLE}`,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates'},body:JSON.stringify(old.map(favorite_id=>({favorite_id})))});if(!r.ok)throw new Error(`migration ${r.status}`);localStorage.removeItem('wedding-calendar-card-favorites')}catch(e){console.error('legacy favorite migration failed',e)}}async function initSharedFavorites(){await migrateLegacyFavorites();await loadSharedFavorites(false);cal();sel(Object.keys(B).sort()[0]);setInterval(()=>loadSharedFavorites(true),3000)}initSharedFavorites();"
+          old="gm(sat('2027-07-03','2027-07-11'),{'시그니처홀':[['14:00',2000000],['15:00 이후',10000000]]"
+          new="gm(sat('2027-07-03','2027-07-11'),{'시그니처홀':[['14:00',2000000],['15:00 이후',1000000]]"
           if old not in s:
-              raise SystemExit('shared init anchor missing')
+              raise SystemExit('July Signature Hall price anchor missing')
           s=s.replace(old,new,1)
-
           p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- shared-favorites-legacy-migration-20260818-1250 -->\n',encoding='utf-8')
+          Path('latest.html').write_text(s+'\n<!-- july-signature-fix-20260818-1322 -->\n',encoding='utf-8')
           PY
-      - name: Commit legacy favorite migration
+      - name: Commit July Signature Hall price fix
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Migrate local favorites to shared Supabase" || exit 0
+          git commit -m "Set July Signature Hall 15:00+ to 1,000,000 won" || exit 0
           git push
