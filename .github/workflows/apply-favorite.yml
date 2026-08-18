@@ -1,4 +1,4 @@
-name: Try favorite count and venue color markers
+name: Refine favorite navigation markers
 on:
   push:
     paths:
@@ -10,50 +10,65 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch calendar favorite summary only
+      - name: Patch favorite markers and tabs
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
+
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
 
-          # Calendar favorite summary styles. Existing layout/date logic stays unchanged.
-          if '.favsummary{' not in s:
-              anchor='.favdot{position:absolute;right:9px;bottom:9px;width:9px;height:9px;border-radius:50%;background:#d85f78;box-shadow:0 0 0 3px #fff}'
-              styles='.favsummary{position:absolute;right:7px;bottom:6px;display:flex;flex-direction:column;align-items:flex-end;gap:3px}.favcount{font-size:11px;font-weight:800;color:#c9586d;line-height:1}.favvenues{display:flex;gap:3px}.venue-dot{width:8px;height:8px;border-radius:50%;display:block;box-shadow:0 0 0 1px rgba(255,255,255,.95)}'
-              if anchor in s:
-                  s=s.replace(anchor,styles,1)
-              else:
-                  count='.count{position:absolute;left:8px;bottom:7px;color:var(--muted);font-size:11px}'
-                  if count not in s: raise SystemExit('calendar css anchor missing')
-                  s=s.replace(count,count+styles,1)
+          # Visual markers: calendar dots + tab dots. Remove heart-count styling.
+          s=re.sub(r'\.favsummary\{.*?\}\.favcount\{.*?\}\.favvenues\{.*?\}\.venue-dot\{.*?\}',
+                   '.favsummary{position:absolute;right:7px;bottom:7px;display:flex;gap:4px;align-items:center}.venue-dot{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 0 1px rgba(255,255,255,.95)}.tab-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:1px;box-shadow:0 0 0 1px rgba(255,255,255,.9)}',
+                   s,count=1)
+          if '.tab-dot{' not in s:
+              anchor='.count{position:absolute;left:8px;bottom:7px;color:var(--muted);font-size:11px}'
+              styles='.favsummary{position:absolute;right:7px;bottom:7px;display:flex;gap:4px;align-items:center}.venue-dot{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 0 1px rgba(255,255,255,.95)}.tab-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:1px;box-shadow:0 0 0 1px rgba(255,255,255,.9)}'
+              if anchor not in s: raise SystemExit('css anchor missing')
+              s=s.replace(anchor,anchor+styles,1)
 
-          # Replace the old boolean marker helper with detailed favorite summary helpers.
-          s=re.sub(r"function dateHasFav\(ds\)\{.*?\}","function favQuotes(ds){return (B[ds]||[]).filter(x=>FAV.has(favId(x)))}function favVenues(ds){return [...new Set(favQuotes(ds).map(x=>x.venue))]}function venueColor(v){return ({'그랜드 모먼트':'#8b6b55','그랜드 블랑':'#5f83b8','센텀사이언스':'#5f9b78','해운대 마리나컨벤션':'#d36f91'})[v]||'#9b8bb5'}",s,count=1)
-          if 'function favQuotes(ds)' not in s:
-              pop="D.forEach(x=>(B[x.date]??=[]).push(x));"
-              if pop not in s: raise SystemExit('B population anchor missing')
-              s=s.replace(pop,pop+"function favQuotes(ds){return (B[ds]||[]).filter(x=>FAV.has(favId(x)))}function favVenues(ds){return [...new Set(favQuotes(ds).map(x=>x.venue))]}function venueColor(v){return ({'그랜드 모먼트':'#8b6b55','그랜드 블랑':'#5f83b8','센텀사이언스':'#5f9b78','해운대 마리나컨벤션':'#d36f91'})[v]||'#9b8bb5'}",1)
+          # Exact requested venue colors.
+          s=re.sub(r"function venueColor\(v\)\{return \(\{.*?\}\)\[v\]\|\|'#9b8bb5'\}",
+                   "function venueColor(v){return ({'그랜드 모먼트':'#e05252','센텀사이언스':'#e0b72f','그랜드 블랑':'#4f7edb','해운대 마리나컨벤션':'#4fa66a'})[v]||'#999'}",
+                   s,count=1)
 
-          # Replace only the calendar cell HTML. Do not change weekday/date calculations.
-          pattern=r"e\.innerHTML=`<b>\$\{n\}</b>\$\{B\[ds\]\?`<div class=\\?\"count\\?\">\$\{new Set\(B\[ds\]\.map\(x=>x\.venue\)\)\.size\}곳</div>`:''\}.*?`;e\.onclick"
-          repl="let fq=favQuotes(ds),fv=favVenues(ds);e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}${fq.length?`<div class=\"favsummary\"><div class=\"favcount\">♥ ${fq.length}</div><div class=\"favvenues\">${fv.map(v=>`<span class=\"venue-dot\" style=\"background:${venueColor(v)}\" title=\"${v}\"></span>`).join('')}</div></div>`:''}`;e.onclick"
-          s2,n=re.subn(pattern,repl,s,count=1)
+          # Calendar: venue color dots only, no heart/count text.
+          cal_pattern=r"let fq=favQuotes\(ds\),fv=favVenues\(ds\);e\.innerHTML=`<b>\$\{n\}</b>\$\{B\[ds\]\?`<div class=\"count\">\$\{new Set\(B\[ds\]\.map\(x=>x\.venue\)\)\.size\}곳</div>`:''\}\$\{fq\.length\?`<div class=\"favsummary\"><div class=\"favcount\">♥ \$\{fq\.length\}</div><div class=\"favvenues\">\$\{fv\.map\(v=>`<span class=\"venue-dot\" style=\"background:\$\{venueColor\(v\)\}\" title=\"\$\{v\}\"></span>`\)\.join\(''\)\}</div></div>`:''\}`;"
+          cal_repl="let fv=favVenues(ds);e.innerHTML=`<b>${n}</b>${B[ds]?`<div class=\"count\">${new Set(B[ds].map(x=>x.venue)).size}곳</div>`:''}${fv.length?`<div class=\"favsummary\">${fv.map(v=>`<span class=\"venue-dot\" style=\"background:${venueColor(v)}\" title=\"${v}\"></span>`).join('')}</div>`:''}`;"
+          s2,n=re.subn(cal_pattern,cal_repl,s,count=1)
           if n!=1:
-              raise SystemExit('calendar cell patch failed')
+              # tolerate a previous equivalent variant
+              s2,n=re.subn(r"let fq=favQuotes\(ds\),fv=favVenues\(ds\);e\.innerHTML=`.*?`;e\.onclick",
+                           cal_repl+'e.onclick',s,count=1,flags=re.S)
+          if n!=1: raise SystemExit('calendar summary anchor missing')
           s=s2
 
-          p.write_text(s,encoding='utf-8')
+          # Venue tabs: always show the fixed venue-color dot before the venue name.
+          vt_new="function vt(){let vs=[...new Set(B[sd].map(x=>x.venue))];$('vt').innerHTML=vs.map(v=>`<button class=\"tab ${v===sv?'a':''}\"><span class=\"tab-dot\" style=\"background:${venueColor(v)}\"></span>${v}</button>`).join('');[...$('vt').children].forEach((b,i)=>b.onclick=()=>{sv=vs[i];sh=null;vt()});ht()}"
+          s2,n=re.subn(r"function vt\(\)\{.*?\}function ht\(\)",vt_new+'function ht()',s,count=1,flags=re.S)
+          if n!=1: raise SystemExit('venue tabs anchor missing')
+          s=s2
 
-          # Refresh cache-busting entry page in the same commit.
-          Path('latest.html').write_text('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>웨딩홀 비교 달력</title></head><body><script>location.replace(\'./index.html?v=fav-summary-1\');</script><p><a href="./index.html?v=fav-summary-1">최신 웨딩홀 비교 달력 열기</a></p></body></html>',encoding='utf-8')
+          # Internal hall tabs: show the venue-color dot only when that hall has at least one favorite quote.
+          ht_new="function ht(){let a=B[sd].filter(x=>x.venue===sv),hs=[...new Set(a.map(x=>x.hall).filter(Boolean))];if(!hs.length){sh='';$('hallSection').classList.add('hidden');$('ht').innerHTML='';res();return}$('hallSection').classList.remove('hidden');if(!sh||!hs.includes(sh))sh=hs[0];$('ht').innerHTML=hs.map(h=>{let marked=a.some(x=>x.hall===h&&FAV.has(favId(x)));return `<button class=\"tab ${h===sh?'a':''}\">${marked?`<span class=\"tab-dot\" style=\"background:${venueColor(sv)}\"></span>`:''}${h}</button>`}).join('');[...$('ht').children].forEach((b,i)=>b.onclick=()=>{sh=hs[i];ht()});res()}"
+          s2,n=re.subn(r"function ht\(\)\{.*?\}function res\(\)",ht_new+'function res()',s,count=1,flags=re.S)
+          if n!=1: raise SystemExit('hall tabs anchor missing')
+          s=s2
+
+          # Favorite toggles need to refresh tabs as well as cards/calendar.
+          s=s.replace("function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));res();cal()}",
+                      "function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));ht();cal()}",1)
+
+          p.write_text(s,encoding='utf-8')
+          Path('latest.html').write_text('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>웨딩홀 비교 달력</title></head><body><script>location.replace(\'./index.html?v=venue-colors-20260818-1225\');</script><p><a href="./index.html?v=venue-colors-20260818-1225">최신 웨딩홀 비교 달력 열기</a></p></body></html>',encoding='utf-8')
           PY
-      - name: Commit trial favorite summary
+      - name: Commit refined favorite navigation
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Show favorite counts and venue colors on calendar" || exit 0
+          git commit -m "Refine favorite colors and tab markers" || exit 0
           git push
