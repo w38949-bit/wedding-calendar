@@ -1,4 +1,4 @@
-name: Add Centum Hotel July and August package
+name: Connect wedding hall photo gallery
 on:
   push:
     paths:
@@ -12,27 +12,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Add Centum Hotel quote data
+      - name: Load photo gallery module
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          p=Path('index.html')
-          s=p.read_text(encoding='utf-8')
-          marker="add('센텀호텔','',sat('2027-07-01','2027-08-31'),[['13:40',7000000]],'65,000원',200,'홀드메 패키지 / 7·8월 13:40 자리 조금 있음');"
-          if marker not in s:
-              anchor="add('해운대 마리나컨벤션','',['2027-09-04','2027-09-25'],[['14:30',600000],['15:30',500000]],'52,000원',150);"
-              if anchor not in s:
-                  raise SystemExit('Marina anchor missing')
-              s=s.replace(anchor,anchor+marker,1)
-          p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- centum-hotel-jul-aug-20260818-2125 -->\n',encoding='utf-8')
+          tag='<script src="photos.js?v=20260818-2137"></script>'
+          for name in ('index.html','latest.html'):
+              p=Path(name)
+              s=p.read_text(encoding='utf-8')
+              if 'photos.js?v=20260818-2137' not in s:
+                  if '</body>' not in s:
+                      raise SystemExit(f'body anchor missing in {name}')
+                  s=s.replace('</body>',tag+'</body>',1)
+              p.write_text(s,encoding='utf-8')
           PY
-      - name: Commit Centum Hotel data
+      - name: Commit photo gallery connection
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add index.html latest.html
-          git commit -m "Add Centum Hotel July-August package" || exit 0
+          git commit -m "Load wedding hall photo gallery" || exit 0
           git push
