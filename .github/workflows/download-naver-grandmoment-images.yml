@@ -1,0 +1,102 @@
+name: Download Naver Grand Moment images
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/download-naver-grandmoment-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Download classified Naver images
+        shell: bash
+        run: |
+          python -m pip install --quiet requests pillow
+          python - <<'PY'
+          import json, re, shutil, requests
+          from pathlib import Path
+          from PIL import Image
+          from io import BytesIO
+
+          src=json.loads(Path('naver-grandmoment-extract.json').read_text(encoding='utf-8'))
+          source=src['source']
+          halls=['시그니처홀','베일홀','클래식홀','엘라홀','화이트홀']
+          slug={'시그니처홀':'signature','베일홀':'veil','클래식홀':'classic','엘라홀':'ella','화이트홀':'white'}
+          root=Path('assets/grand-moment/naver-223451943421')
+          if root.exists(): shutil.rmtree(root)
+          root.mkdir(parents=True,exist_ok=True)
+          sess=requests.Session()
+          headers={
+            'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+            'Referer':'https://blog.naver.com/',
+            'Accept':'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          }
+          manifest={'source':source,'halls':{}}
+          for hall in halls:
+            urls=[]
+            for x in src['items']:
+              if x.get('type')=='image' and x.get('hall')==hall:
+                u=x['url']
+                u=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',u)
+                if u not in urls: urls.append(u)
+            hdir=root/slug[hall]; hdir.mkdir(parents=True,exist_ok=True)
+            saved=[]
+            for i,u in enumerate(urls,1):
+              r=sess.get(u,headers=headers,timeout=30)
+              r.raise_for_status()
+              im=Image.open(BytesIO(r.content)).convert('RGB')
+              path=hdir/f'{i:02d}.jpg'
+              im.save(path,'JPEG',quality=90,optimize=True)
+              saved.append(str(path).replace('\\','/'))
+            manifest['halls'][hall]=saved
+            print(hall,len(saved))
+          Path('assets/grand-moment/naver-223451943421/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - name: Patch gallery to use downloaded local images
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          p=Path('photos.js'); s=p.read_text(encoding='utf-8')
+          m=json.loads(Path('assets/grand-moment/naver-223451943421/manifest.json').read_text(encoding='utf-8'))
+          block_start='/* NAVER_GRANDMOMENT_LOCAL_START */'
+          block_end='/* NAVER_GRANDMOMENT_LOCAL_END */'
+          data={h:[path for path in paths] for h,paths in m['halls'].items()}
+          block=block_start+'\n'+f"const NAVER_GM_LOCAL_SOURCE={json.dumps(m['source'],ensure_ascii=False)};\n"+f"const NAVER_GM_LOCAL={json.dumps(data,ensure_ascii=False)};\n"+"Object.entries(NAVER_GM_LOCAL).forEach(([h,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][h];if(g){g.localSource=NAVER_GM_LOCAL_SOURCE;g.localImgs=imgs}});\n"+block_end
+          # remove previous remote extra block entirely
+          s=re.sub(r'/\* NAVER_GRANDMOMENT_EXTRA_START \*/.*?/\* NAVER_GRANDMOMENT_EXTRA_END \*/\n?', '', s, flags=re.S)
+          if block_start in s:
+            s=re.sub(re.escape(block_start)+r'.*?'+re.escape(block_end),block,s,flags=re.S)
+          else:
+            anchor='\n\nconst style=document.createElement(\'style\');'
+            s=s.replace(anchor,'\n\n'+block+anchor,1)
+          # gallery entry list: original + local downloaded images
+          s=s.replace("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source}))];const count=entries.length;",
+                      "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source}))];const count=entries.length;")
+          if "const count=g.imgs.length;" in s:
+            s=s.replace("const count=g.imgs.length;","const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source}))];const count=entries.length;",1)
+          p.write_text(s,encoding='utf-8')
+          for name in ('index.html','latest.html'):
+            q=Path(name); t=q.read_text(encoding='utf-8')
+            t=re.sub(r'photos\.js\?v=[^\"\']+','photos.js?v=20260818-2302',t)
+            q.write_text(t,encoding='utf-8')
+          PY
+      - name: Commit downloaded images and gallery update
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/grand-moment/naver-223451943421 photos.js index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Store provided Naver Grand Moment photos locally'
+          git push origin main
