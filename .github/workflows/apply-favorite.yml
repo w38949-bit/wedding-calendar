@@ -1,4 +1,4 @@
-name: Add favorites collection tab
+name: Create unique favorites tab page
 on:
   push:
     paths:
@@ -6,73 +6,20 @@ on:
 permissions:
   contents: write
 jobs:
-  patch:
+  copy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Add favorites collection view
-        shell: bash
+        with:
+          ref: main
+      - name: Copy current app to unique page
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          p=Path('index.html')
-          s=p.read_text(encoding='utf-8')
-
-          # 1) Add view-tab styles.
-          if '.viewtabs{' not in s:
-              anchor='.label{font-size:12px;color:var(--muted);margin:14px 0 7px}'
-              styles='.viewtabs{display:flex;gap:8px;margin-bottom:14px}.viewtab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 14px;font-weight:800;cursor:pointer}.viewtab.a{background:var(--accent);color:#fff;border-color:var(--accent)}.favdate{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px}'
-              if anchor not in s: raise SystemExit('style anchor missing')
-              s=s.replace(anchor,styles+anchor,1)
-
-          # 2) Add top-level view tabs and ids for browse-only controls.
-          old='<section class="p"><h2 id="dl">날짜를 선택하세요</h2><div class="label">웨딩홀</div><div id="vt" class="tabs"></div>'
-          new='<section class="p"><div class="viewtabs"><button id="browseTab" class="viewtab a" type="button">견적 보기</button><button id="favTab" class="viewtab" type="button">찜한 카드</button></div><h2 id="dl">날짜를 선택하세요</h2><div id="venueLabel" class="label">웨딩홀</div><div id="vt" class="tabs"></div>'
-          if old in s:
-              s=s.replace(old,new,1)
-          elif 'id="browseTab"' not in s:
-              raise SystemExit('right panel anchor missing')
-
-          # 3) View state and helper functions.
-          state_anchor='let cur=new Date(2027,5,1),sd=null,sv=null,sh=null;'
-          state_new='let cur=new Date(2027,5,1),sd=null,sv=null,sh=null,viewMode=\'browse\';'
-          if state_anchor in s:
-              s=s.replace(state_anchor,state_new,1)
-          elif "viewMode='browse'" not in s:
-              raise SystemExit('state anchor missing')
-
-          # 4) Favorite toggle refreshes whichever view is visible, plus calendar.
-          old_toggle="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));ht();cal()}"
-          new_toggle="function toggleFav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);localStorage.setItem(FAV_KEY,JSON.stringify([...FAV]));cal();viewMode==='favorites'?renderFavorites():ht()}"
-          if old_toggle in s:
-              s=s.replace(old_toggle,new_toggle,1)
-          elif new_toggle not in s:
-              raise SystemExit('toggle anchor missing')
-
-          # 5) Insert favorites renderer + view switching immediately before normal res().
-          if 'function renderFavorites()' not in s:
-              anchor='function res(){'
-              helper=r'''function setView(mode){viewMode=mode;$('browseTab').classList.toggle('a',mode==='browse');$('favTab').classList.toggle('a',mode==='favorites');$('venueLabel').classList.toggle('hidden',mode==='favorites');$('vt').classList.toggle('hidden',mode==='favorites');$('hallSection').classList.toggle('hidden',mode==='favorites');if(mode==='favorites')renderFavorites();else{if(sd){$('dl').textContent=sd;vt()}else $('dl').textContent='날짜를 선택하세요'}}function favoriteCard(x){let id=favId(x);return `<div class="card"><div class="favdate">${x.date}</div><div class="cardhead"><b><span class="tab-dot" style="background:${venueColor(x.venue)}"></span>${x.hall?`${x.venue} · ${x.hall}`:x.venue}</b><div class="cardright"><div class="time">${x.time}</div><button class="favbtn on" data-fav="${encodeURIComponent(id)}" type="button" title="찜 해제" aria-label="찜 해제">♥</button></div></div><div class="row"><div class="s"><span>대관비</span><b>${M(x.rental)}</b></div><div class="s"><span>보증인원</span><b>${x.guarantee?x.guarantee+'명':'미제공'}</b></div><div class="s meal"><span>식대</span><b>${x.meal}</b></div></div><div class="total"><span>350명 예상총액</span><b>${x.total==null?'대관비 확인 필요':M(x.total)}</b></div>${x.note?`<div class="note">${x.note}</div>`:''}</div>`}function renderFavorites(){let a=D.filter(x=>FAV.has(favId(x))).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time,'ko')||a.venue.localeCompare(b.venue,'ko'));$('dl').textContent='찜한 카드';$('res').innerHTML=a.length?a.map(favoriteCard).join(''):'<div class="empty">찜한 견적이 없습니다.</div>';$('res').querySelectorAll('.favbtn').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(decodeURIComponent(b.dataset.fav))})}'''
-              if anchor not in s: raise SystemExit('res anchor missing')
-              s=s.replace(anchor,helper+anchor,1)
-
-          # 6) Wire the two top-level tabs.
-          init_anchor="$ ('pv')" if False else "$('pv').onclick="
-          if "$('browseTab').onclick" not in s:
-              marker="$('pv').onclick="
-              wiring="$('browseTab').onclick=()=>setView('browse');$('favTab').onclick=()=>setView('favorites');"
-              if marker not in s: raise SystemExit('nav handler anchor missing')
-              s=s.replace(marker,wiring+marker,1)
-
-          p.write_text(s,encoding='utf-8')
-          Path('latest.html').write_text(s+'\n<!-- favorites-tab-sync-20260818-1230 -->\n',encoding='utf-8')
-          PY
-      - name: Commit favorites collection view
+          cp index.html favorites-tab-1232.html
+          printf '\n<!-- favorites-tab-1232 -->\n' >> favorites-tab-1232.html
+      - name: Commit unique page
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add index.html latest.html
-          git commit -m "Add favorites collection tab" || exit 0
+          git add favorites-tab-1232.html
+          git commit -m "Add unique favorites tab test page" || exit 0
           git push
