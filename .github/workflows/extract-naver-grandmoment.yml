@@ -53,6 +53,9 @@ jobs:
           items=[]
           seen=set()
 
+          def norm(s):
+            return re.sub(r'[^0-9A-Za-z가-힣]','',s or '')
+
           def img_url(tag):
             for k in ('data-lazy-src','data-src','src'):
               v=tag.get(k)
@@ -61,14 +64,13 @@ jobs:
                 return v
             return None
 
-          # Walk descendants in document order; update current hall when text mentions it,
-          # then assign following images until another hall name appears.
           for node in root.descendants:
             if isinstance(node, NavigableString):
               t=' '.join(str(node).split())
               if not t: continue
+              nt=norm(t)
               for h in hall_names:
-                if h in t:
+                if norm(h) in nt:
                   current=h
                   items.append({'type':'text','hall':current,'text':t[:300]})
                   break
@@ -79,7 +81,6 @@ jobs:
               alt=' '.join((node.get('alt') or '').split())
               items.append({'type':'image','hall':current,'url':u,'alt':alt[:200]})
 
-          # Also collect SmartEditor image metadata URLs that may not appear as img src.
           raw_urls=[]
           for m in re.finditer(r'https?://[^\"\'<> ]+(?:\.jpg|\.jpeg|\.png|\.gif|\.webp)(?:\?[^\"\'<> ]*)?', html, re.I):
             u=m.group(0).replace('\\u0026','&')
