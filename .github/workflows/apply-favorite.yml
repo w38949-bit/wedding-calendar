@@ -1,4 +1,4 @@
-name: Connect wedding hall photo gallery
+name: Refresh Grand Moment photo sets
 on:
   push:
     paths:
@@ -12,25 +12,64 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Load photo gallery module
+      - name: Replace Classic Ella White photo sets
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          tag='<script src="photos.js?v=20260818-2137"></script>'
-          for name in ('index.html','latest.html'):
-              p=Path(name)
-              s=p.read_text(encoding='utf-8')
-              if 'photos.js?v=20260818-2137' not in s:
-                  if '</body>' not in s:
-                      raise SystemExit(f'body anchor missing in {name}')
-                  s=s.replace('</body>',tag+'</body>',1)
-              p.write_text(s,encoding='utf-8')
+          import re
+
+          p=Path('photos.js')
+          s=p.read_text(encoding='utf-8')
+
+          classic="""    '클래식홀':{source:'https://sojinee33.tistory.com/entry/W-01-%EA%B7%B8%EB%9E%9C%EB%93%9C%EB%AA%A8%EB%A8%BC%ED%8A%B8-%EC%9B%A8%EB%94%A9%ED%99%80-%ED%99%80%ED%88%AC%EC%96%B4-%EA%B2%AC%EC%A0%81-%EC%8B%9D%EB%8C%80-%EB%8C%80%EA%B4%80%EB%A3%8C-%EA%B3%B5%EC%9C%A0-%ED%9B%84%EA%B8%B0',imgs:[
+      'https://blog.kakaocdn.net/dna/lq7tg/btsHg4AAZzK/AAAAAAAAAAAAAAAAAAAAANfpo8_c5He9pWthrd_V6Q8I7Owrve4t5cKwSfPW1BW7/img.jpg',
+      'https://blog.kakaocdn.net/dna/nLafD/btsHjwP4PQt/AAAAAAAAAAAAAAAAAAAAACdXpoC4Zf8mQ7hIDPSB5D8o_cnul_wjtjNSEgi_fkcn/img.jpg',
+      'https://blog.kakaocdn.net/dna/Jn33l/btsHiGyVae5/AAAAAAAAAAAAAAAAAAAAAEZ8S4TONMIa7Wu4Ix-QqIDiL_-c_DT7hpnPz7WlL4iR/img.jpg',
+      'https://blog.kakaocdn.net/dna/cfEP7z/btsHjxnQEWL/AAAAAAAAAAAAAAAAAAAAAAQOW1TvBk2sN6aWvugrZLCrjmT0081n2k32d_PgfbeY/img.jpg',
+      'https://blog.kakaocdn.net/dna/ely6Lr/btsHgzU5on5/AAAAAAAAAAAAAAAAAAAAANVLlcA9UKfRKzrQksJrdwpPCtt0tGs3Og8RuBRnOGiB/img.jpg',
+      'https://blog.kakaocdn.net/dna/cpVHSg/btsHgY1AFTw/AAAAAAAAAAAAAAAAAAAAAJgTHQrotKClQVZeLl3uUhCY8nSsktRJBOKl3cZlKiej/img.jpg',
+      'https://blog.kakaocdn.net/dna/b66pOd/btsHjWugU8g/AAAAAAAAAAAAAAAAAAAAAJkE2k5IbYpwUBtXTSIydFBylV0Pr0-2yeHQjskaSgoH/img.jpg',
+      'https://blog.kakaocdn.net/dna/dIEL1q/btrVo3PiWiM/AAAAAAAAAAAAAAAAAAAAAOiArRZUB2QvWI1KcZ_pe-smHzGinuKjDL0CaP0x51zn/img.jpg',
+      'https://blog.kakaocdn.net/dna/JIjgh/btrVo4m3uzr/AAAAAAAAAAAAAAAAAAAAAMblUeqBJz3FZRbDI99e2cyR42KcxCyI6_iLZ8enec5t/img.jpg',
+      'https://blog.kakaocdn.net/dna/be0Alm/btrVnYADFFa/AAAAAAAAAAAAAAAAAAAAAPU96UtgSyZTDgJHTH2QPqdBVkn-VH-UQifiREiWcxm-/img.jpg']},"""
+
+          ella="""    '엘라홀':{source:'https://sojinee33.tistory.com/entry/W-01-%EA%B7%B8%EB%9E%9C%EB%93%9C%EB%AA%A8%EB%A8%BC%ED%8A%B8-%EC%9B%A8%EB%94%A9%ED%99%80-%ED%99%80%ED%88%AC%EC%96%B4-%EA%B2%AC%EC%A0%81-%EC%8B%9D%EB%8C%80-%EB%8C%80%EA%B4%80%EB%A3%8C-%EA%B3%B5%EC%9C%A0-%ED%9B%84%EA%B8%B0',imgs:[
+      'https://blog.kakaocdn.net/dna/bxFbWe/btsHghAq3Oe/AAAAAAAAAAAAAAAAAAAAAMrVwQ0iqPMpUy91p576N1KQ1NyUSK2CK8JArpKrSNrK/img.jpg',
+      'https://blog.kakaocdn.net/dna/c0zG0k/btsHkjJD250/AAAAAAAAAAAAAAAAAAAAAIjsXCUc_8RjEFTN-pRHSMzmAFjCxC8vCz2dD57Z9aXD/img.jpg',
+      'https://blog.kakaocdn.net/dna/c76Qpg/btsHjA5V2ZO/AAAAAAAAAAAAAAAAAAAAAMVTxtHTWUlUN9bXvtDCRF2arJ555EeppGo001hvCmIy/img.jpg',
+      'https://blog.kakaocdn.net/dna/cOxUJX/btsHjVozGCa/AAAAAAAAAAAAAAAAAAAAACxINMJUvUxEz3UBfObx1PAq1L5nw-pinjTnjnG_se-C/img.png',
+      'https://blog.kakaocdn.net/dna/pCmsr/btsHgCdb1Oj/AAAAAAAAAAAAAAAAAAAAALn28V-56PrFrABpTlCutTdXKUOyD__qIsQ3-DZUCG_g/img.jpg',
+      'https://blog.kakaocdn.net/dna/d05Dqt/btsHj0clvSl/AAAAAAAAAAAAAAAAAAAAAHVBhjA9TKysCX2LTEWWkWu_c3ca7Iv3RsFmlRitF6go/img.jpg',
+      'https://blog.kakaocdn.net/dna/bwucUF/btsHjW15TTE/AAAAAAAAAAAAAAAAAAAAAL0rwuKvCvlIk6kH4O1x8Va9De9egIDUyYYRjgGZ9hM6/img.jpg',
+      'https://blog.kakaocdn.net/dna/mW9Bc/btrVpZyGCxi/AAAAAAAAAAAAAAAAAAAAAHfxi0IxRaHwjnAgL5AbZ-hyPERxl1NnaHlJpy3Fcbmu/img.jpg',
+      'https://blog.kakaocdn.net/dna/DMcKc/btrVqhMRgeQ/AAAAAAAAAAAAAAAAAAAAAI2iChJzuL8RU2wha9oSUiW_-oJRHucEk3s7JTMmiq-F/img.jpg',
+      'https://blog.kakaocdn.net/dna/cabldY/btrVoFHMYdL/AAAAAAAAAAAAAAAAAAAAAPWjObl5_qCYmcwYB_NBEDWfeCURBbfIg9ZGige8SIDA/img.jpg']},"""
+
+          white="""    '화이트홀':{source:'https://fodlem45.tistory.com/entry/%EB%B6%80%EC%82%B0-%EA%B7%B8%EB%9E%9C%EB%93%9C%EB%AA%A8%EB%A8%BC%ED%8A%B8-%ED%99%94%EC%9D%B4%ED%8A%B8%ED%99%80-%EA%B3%84%EC%95%BD-%ED%9B%84%EA%B8%B0%EA%B2%AC%EC%A0%81%EB%B9%84%EC%9A%A9-%EA%B3%B5%EC%9C%A0',imgs:[
+      'https://blog.kakaocdn.net/dna/mkKWB/btsL5jSVGyl/AAAAAAAAAAAAAAAAAAAAALLWcbjJrlfX5CrMMn-8aEF8Bt2zseGS7ZfanSRizS-q/img.jpg',
+      'https://blog.kakaocdn.net/dna/qDVMe/btsL52iRjUB/AAAAAAAAAAAAAAAAAAAAALnU5awHla1MLEO0OUrZk8EpNuavS36RyILHlCMkRWRQ/img.jpg',
+      'https://blog.kakaocdn.net/dna/AraKU/btsL4KQ04UA/AAAAAAAAAAAAAAAAAAAAAA1kDEsLrDmsCSocvT3qhwlloBJfMrwdyfT7TxgO46F3/img.jpg',
+      'https://blog.kakaocdn.net/dna/cxngJd/btsL37MKavU/AAAAAAAAAAAAAAAAAAAAAEue4btHoAHFGER743y787ZFLhWHwjSUeFuQ46aES294/img.jpg',
+      'https://blog.kakaocdn.net/dna/cbh0uN/btsL4XigYB3/AAAAAAAAAAAAAAAAAAAAAMlto2M-63Docz9QT689CbvInvnAu_px4g2YlTuOhniK/img.jpg',
+      'https://blog.kakaocdn.net/dna/bcbKLV/btsL4zIYj3r/AAAAAAAAAAAAAAAAAAAAAH4lCaZ4AEgRcRBIYUQbX-elvERxTGLlnbdlj3M-UX9t/img.jpg',
+      'https://blog.kakaocdn.net/dna/dtFwzn/btsL5C5NErW/AAAAAAAAAAAAAAAAAAAAAPE0uKKtllt5MmoMaruvKhkIfCM4QlFwLFtrGwChzYAJ/img.jpg',
+      'https://blog.kakaocdn.net/dna/bBUia1/btsL5jei2j2/AAAAAAAAAAAAAAAAAAAAAEjzXUy6RM_Gaxjq7LVejufEzp2tXqQRcSJhuwwD2EwI/img.jpg',
+      'https://blog.kakaocdn.net/dna/WesQq/btsKqDfQbsu/AAAAAAAAAAAAAAAAAAAAADvZ7MBq8Joje1gFlp2gwbOjVqhqDCzGuC39UrDuoZgf/img.jpg',
+      'https://blog.kakaocdn.net/dna/5XKBw/btsKscOqkCA/AAAAAAAAAAAAAAAAAAAAAONVtDAjVbfyIe41max2PgwJyYtTulcS7aDtShPwSjfs/img.png']}
+"""
+
+          s,n1=re.subn(r"    '클래식홀':\{source:.*?\]\},\n(?=    '엘라홀')",classic+'\n',s,flags=re.S)
+          s,n2=re.subn(r"    '엘라홀':\{source:.*?\]\},\n(?=    '화이트홀')",ella+'\n',s,flags=re.S)
+          s,n3=re.subn(r"    '화이트홀':\{source:.*?\]\}\n(?=  \},\n  '그랜드 블랑')",white,s,flags=re.S)
+          if (n1,n2,n3)!=(1,1,1):
+              raise SystemExit(f'replace counts {(n1,n2,n3)}')
+          p.write_text(s,encoding='utf-8')
           PY
-      - name: Commit photo gallery connection
+      - name: Commit refreshed photo sets
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add index.html latest.html
-          git commit -m "Load wedding hall photo gallery" || exit 0
+          git add photos.js
+          git commit -m "Refresh Grand Moment Classic Ella White photos" || exit 0
           git push
