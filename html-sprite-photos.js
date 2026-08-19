@@ -12,19 +12,17 @@
     }
   };
   const TOTAL=29;
-  const VERSION='20260819-1110';
+  const VERSION='20260819-1114';
+  const PARTS=['part01','part01b','part02','part03','part04','part05','part06'];
   let spritePromise=null;
 
   function active(sel){return document.querySelector(sel)?.textContent?.trim()||''}
   function loadSprite(){
     if(spritePromise)return spritePromise;
-    spritePromise=Promise.all(Array.from({length:6},(_,i)=>{
-      const n=String(i+1).padStart(2,'0');
-      return fetch(`assets/html-sprite/part${n}.txt?v=${VERSION}`,{cache:'no-store'}).then(r=>{
-        if(!r.ok)throw new Error(`HTML sprite part ${n}: ${r.status}`);
-        return r.text();
-      });
-    })).then(parts=>'data:image/jpeg;base64,'+parts.join('').replace(/\s+/g,''));
+    spritePromise=Promise.all(PARTS.map(name=>fetch(`assets/html-sprite/${name}.txt?v=${VERSION}`,{cache:'no-store'}).then(r=>{
+      if(!r.ok)throw new Error(`HTML sprite ${name}: ${r.status}`);
+      return r.text();
+    }))).then(parts=>'data:image/jpeg;base64,'+parts.join('').replace(/\s+/g,''));
     return spritePromise;
   }
 
