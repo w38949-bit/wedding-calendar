@@ -13,9 +13,10 @@
       '퀸덤홀(화이트홀)':seq('grand-blanc/queendom',9)
     }
   };
-  const VERSION='20260819-1220';
+  const VERSION='20260819-1226';
   const active=sel=>document.querySelector(sel)?.textContent?.trim()||'';
   let renderToken=0;
+  let applying=false;
 
   const preload=src=>new Promise(resolve=>{
     const im=new Image();
@@ -27,6 +28,7 @@
   const imgCard=(item,venue,hall,i,cls='')=>`<div class="local-gallery-card ${cls}"><img src="${item.src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.local-gallery-card')?.remove()"></div>`;
 
   async function apply(){
+    if(applying)return;
     if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
     const venue=active('#vt .tab.a');
     const hall=active('#ht .tab.a');
@@ -35,34 +37,42 @@
     const res=document.getElementById('res');
     if(!res)return;
     const key=`${venue}|${hall}`;
-    if(res.querySelector(`.local-gallery[data-key="${CSS.escape(key)}"]`))return;
+    if(res.querySelector('.local-gallery')?.dataset.key===key)return;
 
+    applying=true;
     const token=++renderToken;
     res.innerHTML=`<div class="local-gallery-meta">저장된 원본 사진 ${imgs.length}장</div><div class="local-gallery-loading">사진 배치 중…</div>`;
-    const loaded=(await Promise.all(imgs.map(preload))).filter(Boolean).map((x,i)=>({...x,idx:i}));
-    if(token!==renderToken)return;
-    if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
-    if(active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
+    try{
+      const loaded=(await Promise.all(imgs.map(preload))).filter(Boolean).map((x,i)=>({...x,idx:i}));
+      if(token!==renderToken)return;
+      if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
+      if(active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
 
-    const landscapes=loaded.filter(x=>x.ratio>=1.18).sort((a,b)=>b.ratio-a.ratio);
-    const portraits=loaded.filter(x=>x.ratio<1.18).sort((a,b)=>Math.abs(a.ratio-0.78)-Math.abs(b.ratio-0.78));
-    const blocks=[];
+      const landscapes=loaded.filter(x=>x.ratio>=1.18).sort((a,b)=>b.ratio-a.ratio);
+      const portraits=loaded.filter(x=>x.ratio<1.18).sort((a,b)=>Math.abs(a.ratio-0.78)-Math.abs(b.ratio-0.78));
+      const blocks=[];
 
-    while(portraits.length>=2){
-      const a=portraits.shift(),b=portraits.shift();
-      blocks.push(`<div class="local-gallery-pair">${imgCard(a,venue,hall,a.idx)}${imgCard(b,venue,hall,b.idx)}</div>`);
-      if(landscapes.length)blocks.push(imgCard(landscapes.shift(),venue,hall,loaded.indexOf(landscapes[0]),'local-gallery-wide'));
-    }
-    if(portraits.length){
-      const a=portraits.shift();
-      blocks.push(`<div class="local-gallery-single">${imgCard(a,venue,hall,a.idx)}</div>`);
-    }
-    while(landscapes.length){
-      const a=landscapes.shift();
-      blocks.push(imgCard(a,venue,hall,a.idx,'local-gallery-wide'));
-    }
+      while(portraits.length>=2){
+        const a=portraits.shift(),b=portraits.shift();
+        blocks.push(`<div class="local-gallery-pair">${imgCard(a,venue,hall,a.idx)}${imgCard(b,venue,hall,b.idx)}</div>`);
+        if(landscapes.length){
+          const wide=landscapes.shift();
+          blocks.push(imgCard(wide,venue,hall,wide.idx,'local-gallery-wide'));
+        }
+      }
+      if(portraits.length){
+        const a=portraits.shift();
+        blocks.push(`<div class="local-gallery-single">${imgCard(a,venue,hall,a.idx)}</div>`);
+      }
+      while(landscapes.length){
+        const a=landscapes.shift();
+        blocks.push(imgCard(a,venue,hall,a.idx,'local-gallery-wide'));
+      }
 
-    res.innerHTML=`<div class="local-gallery-meta">저장된 원본 사진 ${loaded.length}장</div><div class="local-gallery" data-key="${key}">${blocks.join('')}</div>`;
+      res.innerHTML=`<div class="local-gallery-meta">저장된 원본 사진 ${loaded.length}장</div><div class="local-gallery" data-key="${key}">${blocks.join('')}</div>`;
+    } finally {
+      applying=false;
+    }
   }
 
   const style=document.createElement('style');
@@ -84,7 +94,17 @@
     }
   `;
   document.head.appendChild(style);
-  new MutationObserver(()=>queueMicrotask(apply)).observe(document.documentElement,{childList:true,subtree:true});
-  document.addEventListener('click',()=>setTimeout(apply,0),true);
-  apply();
+
+  let scheduled=false;
+  const scheduleApply=()=>{
+    if(scheduled)return;
+    scheduled=true;
+    requestAnimationFrame(()=>{
+      scheduled=false;
+      apply();
+    });
+  };
+  new MutationObserver(()=>{if(!applying)scheduleApply()}).observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('click',()=>setTimeout(scheduleApply,0),true);
+  scheduleApply();
 })();
