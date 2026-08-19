@@ -1,0 +1,110 @@
+name: Force gallery refresh and prune broken photos
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/force-photo-refresh.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prune broken URLs and force a new gallery filename
+        shell: bash
+        run: |
+          python -m pip install --quiet requests
+          python - <<'PY'
+          import json,re,requests
+          from pathlib import Path
+          from urllib.parse import quote
+
+          p=Path('photos.js')
+          s=p.read_text(encoding='utf-8')
+          ua={'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36','Referer':'https://blog.naver.com/'}
+          removed=[]; checked={}
+
+          # Keep Queendom strictly on the exact 9 URLs extracted from the supplied HTML.
+          qurls=json.loads(Path('queendom-target-urls.json').read_text(encoding='utf-8'))
+          qimgs=','.join(json.dumps(u,ensure_ascii=False) for u in qurls)
+          qnew=f"'퀸덤홀(화이트홀)':{{source:'https://m.blog.naver.com/rh30921/224144337505',imgs:[{qimgs}]}}"
+          s,n=re.subn(r"'퀸덤홀\(화이트홀\)':\{source:[^,]+,imgs:\[.*?\]\}",qnew,s,count=1,flags=re.S)
+          if n!=1: raise SystemExit(f'queendom replacement count={n}')
+
+          def works(url):
+              if url in qurls: return True
+              if url.startswith('assets/'): return Path(url).exists()
+              if url in checked: return checked[url]
+              test=url
+              if 'blog.kakaocdn.net' in url:
+                  test='https://wsrv.nl/?url='+quote(url,safe='')+'&w=400&q=75&output=webp'
+              try:
+                  r=requests.get(test,headers=ua,timeout=18,allow_redirects=True)
+                  ct=r.headers.get('content-type','').lower()
+                  ok=r.ok and (ct.startswith('image/') or len(r.content)>6000)
+              except Exception:
+                  ok=False
+              checked[url]=ok
+              return ok
+
+          # Permanently remove broken URLs from every normal imgs array.
+          def clean_imgs(m):
+              vals=re.findall(r"(['\"])(.*?)\1",m.group(1),flags=re.S)
+              keep=[]
+              for _,u in vals:
+                  if works(u): keep.append(u)
+                  else: removed.append(u)
+              return 'imgs:['+','.join(json.dumps(u,ensure_ascii=False) for u in keep)+']'
+          s=re.sub(r'imgs:\[(.*?)\]',clean_imgs,s,flags=re.S)
+
+          # Permanently remove broken URLs from the Grand Moment HTML extra-photo block too.
+          mm=re.search(r'/\* HTML_GRANDMOMENT_PHOTOS_START \*/\s*const HTML_GM_PHOTOS=(\{.*?\});\s*/\* HTML_GRANDMOMENT_PHOTOS_END \*/',s,flags=re.S)
+          if mm:
+              obj=json.loads(mm.group(1))
+              for hall,arr in obj.items():
+                  good=[]
+                  for u in arr:
+                      if works(u): good.append(u)
+                      else: removed.append(u)
+                  obj[hall]=good
+              repl='/* HTML_GRANDMOMENT_PHOTOS_START */\nconst HTML_GM_PHOTOS='+json.dumps(obj,ensure_ascii=False)+';\n/* HTML_GRANDMOMENT_PHOTOS_END */'
+              s=s[:mm.start()]+repl+s[mm.end():]
+
+          p.write_text(s,encoding='utf-8')
+          Path('photo-prune-report.txt').write_text('removed='+str(len(removed))+'\n'+'\n'.join(removed)+'\n',encoding='utf-8')
+
+          # New physical JS filename: prevents any old photos.js response from being reused.
+          newname='photos-20260819-1031.js'
+          Path(newname).write_text(s,encoding='utf-8')
+          for name in ('index.html','latest.html'):
+              q=Path(name); t=q.read_text(encoding='utf-8')
+              t=re.sub(r'<script src="photos(?:-[^"]+)?\.js(?:\?v=[^"]*)?"></script>',f'<script src="{newname}"></script>',t)
+              q.write_text(t,encoding='utf-8')
+          PY
+      - name: Stop proxying Naver photos
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('photo-proxy-fix.js')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("(!src.includes('blog.kakaocdn.net')&&!src.includes('postfiles.pstatic.net')&&!src.includes('blogfiles.pstatic.net'))","!src.includes('blog.kakaocdn.net')")
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit permanent cleanup
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos.js photos-20260819-1031.js index.html latest.html photo-proxy-fix.js photo-prune-report.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Force Queendom refresh and permanently delete broken photos'
+          git push origin main
