@@ -13,12 +13,8 @@
       '퀸덤홀(화이트홀)':seq('grand-blanc/queendom',9)
     }
   };
-  const VERSION='20260819-1201';
+  const VERSION='20260819-1207';
   const active=sel=>document.querySelector(sel)?.textContent?.trim()||'';
-
-  function card(src,venue,hall,i){
-    return `<div class="photoitem local-original-item"><img class="local-original-photo" src="${src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></div>`;
-  }
 
   function apply(){
     if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
@@ -30,22 +26,54 @@
     if(!res)return;
     const key=`${venue}|${hall}`;
     if(res.querySelector(`.photogrid[data-local-original="${CSS.escape(key)}"]`))return;
-    const left=[],right=[];
-    imgs.forEach((src,i)=>(i%2===0?left:right).push(card(src,venue,hall,i)));
-    res.innerHTML=`<div class="photo-meta"><span>저장된 원본 사진 ${imgs.length}장</span></div><div class="photogrid local-original-grid" data-local-original="${key}"><div class="local-photo-col">${left.join('')}</div><div class="local-photo-col">${right.join('')}</div></div>`;
+    res.innerHTML=`<div class="photo-meta local-original-meta"><span>저장된 원본 사진 ${imgs.length}장</span></div><div class="photogrid local-original-grid" data-local-original="${key}">${imgs.map((src,i)=>`<div class="photoitem local-original-item"><img class="local-original-photo" src="${src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></div>`).join('')}</div>`;
   }
 
   const style=document.createElement('style');
   style.textContent=`
-    .photogrid.local-original-grid{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:12px!important;width:100%!important;max-width:820px!important;margin:12px auto 0!important;align-items:start!important}
-    .local-photo-col{display:flex!important;flex-direction:column!important;gap:12px!important;min-width:0!important;width:100%!important}
-    .photogrid.local-original-grid .photoitem.local-original-item{display:block!important;width:100%!important;margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:hidden!important;border-radius:14px!important}
-    .photoitem img.local-original-photo{display:block!important;width:100%!important;height:auto!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important;margin:0 auto!important;background:#f1ede8}
-    .photo-meta{max-width:820px!important;margin-left:auto!important;margin-right:auto!important}
+    .photogrid.local-original-grid{
+      display:grid!important;
+      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+      gap:14px!important;
+      width:min(100%,820px)!important;
+      margin:12px auto 0!important;
+      align-items:start!important;
+      justify-content:center!important;
+    }
+    .photogrid.local-original-grid .photoitem.local-original-item{
+      display:flex!important;
+      align-items:flex-start!important;
+      justify-content:center!important;
+      width:100%!important;
+      margin:0!important;
+      padding:0!important;
+      height:auto!important;
+      min-height:0!important;
+      overflow:hidden!important;
+      border-radius:14px!important;
+      background:#f1ede8!important;
+    }
+    .photoitem img.local-original-photo{
+      display:block!important;
+      width:100%!important;
+      height:auto!important;
+      max-height:none!important;
+      aspect-ratio:auto!important;
+      object-fit:contain!important;
+      margin:0!important;
+    }
+    .photo-meta.local-original-meta{
+      width:min(100%,820px)!important;
+      margin:14px auto 0!important;
+    }
     .photo-meta a,.photosource{display:none!important}
     @media(max-width:620px){
-      .photogrid.local-original-grid{grid-template-columns:1fr!important;max-width:560px!important}
-      .local-photo-col{display:contents!important}
+      .photogrid.local-original-grid{
+        grid-template-columns:1fr!important;
+        width:min(100%,560px)!important;
+        gap:12px!important;
+      }
+      .photo-meta.local-original-meta{width:min(100%,560px)!important}
     }
   `;
   document.head.appendChild(style);
