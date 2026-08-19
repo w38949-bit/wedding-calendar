@@ -1,0 +1,75 @@
+name: Materialize Queendom photos locally
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/materialize-queendom-local.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download exact Queendom images
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf assets/grand-blanc/queendom
+          mkdir -p assets/grand-blanc/queendom
+          python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          urls=json.loads(Path('queendom-target-urls.json').read_text(encoding='utf-8'))
+          assert len(urls)==9, len(urls)
+          for i,url in enumerate(urls,1):
+              out=f'assets/grand-blanc/queendom/{i:02d}.jpg'
+              subprocess.run([
+                  'curl','-L','--fail','--retry','3','--connect-timeout','15','--max-time','60',
+                  '-A','Mozilla/5.0','-e','https://blog.naver.com/',url,'-o',out
+              ],check=True)
+              p=Path(out)
+              if p.stat().st_size < 5000:
+                  raise SystemExit(f'{out} too small: {p.stat().st_size}')
+          PY
+          file assets/grand-blanc/queendom/*.jpg
+          ls -lh assets/grand-blanc/queendom
+
+      - name: Point gallery to local Queendom files
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, json
+          from pathlib import Path
+          src=Path('photos-20260819-1043.js')
+          s=src.read_text(encoding='utf-8')
+          local=[f'assets/grand-blanc/queendom/{i:02d}.jpg' for i in range(1,10)]
+          imgs=','.join(json.dumps(x,ensure_ascii=False) for x in local)
+          replacement=f"'퀸덤홀(화이트홀)':{{source:'https://m.blog.naver.com/rh30921/224144337505',imgs:[{imgs}]}}"
+          s,n=re.subn(r"'퀸덤홀\(화이트홀\)':\{source:[^,]+,imgs:\[.*?\]\}",replacement,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'Queendom replacement count={n}')
+          out=Path('photos-20260819-1048.js')
+          out.write_text(s,encoding='utf-8')
+          for name in ('index.html','latest.html'):
+              p=Path(name)
+              t=p.read_text(encoding='utf-8').replace('photos-20260819-1043.js','photos-20260819-1048.js')
+              p.write_text(t,encoding='utf-8')
+          PY
+
+      - name: Commit local Queendom images
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/grand-blanc/queendom photos-20260819-1048.js index.html latest.html
+          git commit -m 'Store Queendom photos locally and use them in gallery'
+          git push origin main
