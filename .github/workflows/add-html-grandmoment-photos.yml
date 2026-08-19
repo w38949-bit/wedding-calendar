@@ -32,127 +32,110 @@ jobs:
           src = json.loads(Path('naver-grandmoment-extract.json').read_text(encoding='utf-8'))
           source = src['source']
 
-          heading_map = [
-              ('1_클래식 홀', '클래식홀'),
-              ('2_엘라홀', '엘라홀'),
-              ('2_베일홀', '베일홀'),
-              ('4_오페라홀', '오페라홀'),
-              ('5_시그니처홀', '시그니처홀'),
-          ]
-          slug = {
-              '클래식홀': 'classic',
-              '엘라홀': 'ella',
-              '베일홀': 'veil',
-              '오페라홀': 'opera',
-              '시그니처홀': 'signature',
-          }
-          grouped = {h: [] for h in slug}
-          current = None
-          for item in src['items']:
-              if item.get('type') == 'text':
-                  text = item.get('text', '').strip()
-                  for prefix, hall in heading_map:
-                      if text.startswith(prefix):
-                          current = hall
-                          break
-                  # old extraction can miss the Opera heading but retains its first description
-                  if "'오페라홀'은 화이트와 블랙의 조화" in text:
-                      current = '오페라홀'
-              elif item.get('type') == 'image' and current:
-                  url = item.get('url')
-                  if url and url not in grouped[current]:
-                      grouped[current].append(url)
+          # The supplied HTML has an unambiguous photo order:
+          # Classic 4 -> Ella 4 -> Veil 3 -> Opera 3 -> Signature 6.
+          sequence = [('클래식홀',4),('엘라홀',4),('베일홀',3),('오페라홀',3),('시그니처홀',6)]
+          slug = {'클래식홀':'classic','엘라홀':'ella','베일홀':'veil','오페라홀':'opera','시그니처홀':'signature'}
+          grouped = {h:[] for h,_ in sequence}
 
-          expected = {'클래식홀':4,'엘라홀':4,'베일홀':3,'오페라홀':3,'시그니처홀':6}
+          # Ignore the old, faulty hall labels. Start at the first Classic heading,
+          # then consume image items strictly by the HTML section counts above.
+          started = False
+          hall_i = 0
+          for item in src['items']:
+              if item.get('type') == 'text' and item.get('text','').strip().startswith('1_클래식 홀'):
+                  started = True
+                  continue
+              if not started or item.get('type') != 'image' or hall_i >= len(sequence):
+                  continue
+              hall, expected = sequence[hall_i]
+              url = item.get('url')
+              if url and url not in grouped[hall]:
+                  grouped[hall].append(url)
+              if len(grouped[hall]) == expected:
+                  hall_i += 1
+
           counts = {h:len(v) for h,v in grouped.items()}
+          expected_counts = dict(sequence)
           print('classified counts:', counts)
-          if counts != expected:
-              raise SystemExit(f'Unexpected photo classification: {counts} != {expected}')
+          if counts != expected_counts:
+              raise SystemExit(f'Unexpected photo classification: {counts} != {expected_counts}')
 
           root = Path('assets/grand-moment/naver-223451943421')
-          if root.exists():
-              shutil.rmtree(root)
+          if root.exists(): shutil.rmtree(root)
           root.mkdir(parents=True, exist_ok=True)
 
           sess = requests.Session()
           headers = {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-              'Referer': 'https://blog.naver.com/',
-              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+              'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+              'Referer':'https://blog.naver.com/',
+              'Accept':'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           }
-          manifest = {'source': source, 'halls': {}}
+          manifest = {'source':source,'halls':{}}
           for hall, urls in grouped.items():
-              hdir = root / slug[hall]
+              hdir = root/slug[hall]
               hdir.mkdir(parents=True, exist_ok=True)
-              saved = []
-              for i, url in enumerate(urls, 1):
+              saved=[]
+              for i,url in enumerate(urls,1):
                   url = re.sub(r'([?&])type=w\d+(?:_blur)?', r'\1type=w1600', url)
                   r = sess.get(url, headers=headers, timeout=30)
                   r.raise_for_status()
                   im = Image.open(BytesIO(r.content)).convert('RGB')
                   im.thumbnail((1600,1600))
-                  path = hdir / f'{i:02d}.jpg'
-                  im.save(path, 'JPEG', quality=85, optimize=True)
+                  path = hdir/f'{i:02d}.jpg'
+                  im.save(path,'JPEG',quality=85,optimize=True)
                   saved.append(str(path).replace('\\','/'))
-              manifest['halls'][hall] = saved
-
-          (root/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+              manifest['halls'][hall]=saved
+          (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
           PY
 
       - name: Add downloaded photos to gallery
         shell: bash
         run: |
           python - <<'PY'
-          import json, re
+          import json,re
           from pathlib import Path
 
-          p = Path('photos.js')
-          s = p.read_text(encoding='utf-8')
-          manifest = json.loads(Path('assets/grand-moment/naver-223451943421/manifest.json').read_text(encoding='utf-8'))
-
-          start = '/* HTML_GRANDMOMENT_PHOTOS_START */'
-          end = '/* HTML_GRANDMOMENT_PHOTOS_END */'
-          data = json.dumps(manifest['halls'], ensure_ascii=False)
-          source = json.dumps(manifest['source'], ensure_ascii=False)
-          block = start + '\n' + \
-              f'const HTML_GM_SOURCE={source};\n' + \
-              f'const HTML_GM_PHOTOS={data};\n' + \
-              "Object.entries(HTML_GM_PHOTOS).forEach(([hall,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][hall];if(g){g.htmlSource=HTML_GM_SOURCE;g.htmlImgs=imgs}});\n" + end
-
+          p=Path('photos.js')
+          s=p.read_text(encoding='utf-8')
+          m=json.loads(Path('assets/grand-moment/naver-223451943421/manifest.json').read_text(encoding='utf-8'))
+          start='/* HTML_GRANDMOMENT_PHOTOS_START */'
+          end='/* HTML_GRANDMOMENT_PHOTOS_END */'
+          block=(start+'\n'+
+                 f"const HTML_GM_SOURCE={json.dumps(m['source'],ensure_ascii=False)};\n"+
+                 f"const HTML_GM_PHOTOS={json.dumps(m['halls'],ensure_ascii=False)};\n"+
+                 "Object.entries(HTML_GM_PHOTOS).forEach(([hall,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][hall];if(g){g.htmlSource=HTML_GM_SOURCE;g.htmlImgs=imgs}});\n"+
+                 end)
           if start in s:
-              s = re.sub(re.escape(start)+r'.*?'+re.escape(end), block, s, flags=re.S)
+              s=re.sub(re.escape(start)+r'.*?'+re.escape(end),block,s,flags=re.S)
           else:
-              anchor = "\n\nconst style=document.createElement('style');"
-              if anchor not in s:
-                  raise SystemExit('photos.js style anchor not found')
-              s = s.replace(anchor, '\n\n'+block+anchor, 1)
+              anchor="\n\nconst style=document.createElement('style');"
+              if anchor not in s: raise SystemExit('photos.js style anchor not found')
+              s=s.replace(anchor,'\n\n'+block+anchor,1)
 
-          # Ensure gallery entries include the new locally stored HTML/Naver photos.
+          # Extend whichever gallery-entry expression the current photos.js uses.
           if 'g.htmlImgs' not in s[s.find('function renderPhotoGallery'):]:
-              patterns = [
-                  ("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source}))];const count=entries.length;",
-                   "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;"),
-                  ("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source}))];const count=entries.length;",
-                   "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;"),
-              ]
+              replacements=[
+                ("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source}))];const count=entries.length;",
+                 "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.localImgs||[]).map(src=>({src,source:g.localSource||g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;"),
+                ("const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source}))];const count=entries.length;",
+                 "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.extraImgs||[]).map(src=>({src,source:g.extraSource||g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;")]
               changed=False
-              for old,new in patterns:
+              for old,new in replacements:
                   if old in s:
                       s=s.replace(old,new,1); changed=True; break
               if not changed and 'const count=g.imgs.length;' in s:
-                  s=s.replace('const count=g.imgs.length;', "const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;",1)
-                  # replace direct g.imgs renderer with entries when present
-                  s=s.replace('g.imgs.map((src,i)=>', 'entries.map(({src,source},i)=>', 1)
-              elif not changed:
-                  raise SystemExit('Could not locate gallery entries expression')
+                  s=s.replace('const count=g.imgs.length;',"const entries=[...g.imgs.map(src=>({src,source:g.source})),...(g.htmlImgs||[]).map(src=>({src,source:g.htmlSource||g.source}))];const count=entries.length;",1)
+                  s=s.replace('g.imgs.map((src,i)=>','entries.map(({src,source},i)=>',1)
+                  changed=True
+              if not changed: raise SystemExit('Could not locate gallery entries expression')
 
-          p.write_text(s, encoding='utf-8')
-
-          version='20260819-1004'
+          p.write_text(s,encoding='utf-8')
+          version='20260819-1010'
           for name in ('index.html','latest.html'):
               q=Path(name); t=q.read_text(encoding='utf-8')
-              t=re.sub(r'photos\.js\?v=[^\"\']+', f'photos.js?v={version}', t)
-              q.write_text(t, encoding='utf-8')
+              t=re.sub(r'photos\.js\?v=[^\"\']+',f'photos.js?v={version}',t)
+              q.write_text(t,encoding='utf-8')
           PY
 
       - name: Commit imported photos
