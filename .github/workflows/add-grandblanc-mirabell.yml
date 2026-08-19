@@ -1,0 +1,34 @@
+name: add-grandblanc-mirabell
+on:
+  push:
+    paths:
+      - '.github/workflows/add-grandblanc-mirabell.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Grand Blanc Mirabell Garden quotes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          insert = "add('그랜드 블랑','미라벨가든',sat('2027-06-01','2027-06-30'),[['13:00',2000000],['15:00',1500000]],'56,000원',150);add('그랜드 블랑','미라벨가든',sat('2027-09-01','2027-09-30'),[['13:00',3300000],['15:00',3000000]],'58,000원',150);add('그랜드 블랑','미라벨가든',['2027-10-02','2027-10-09'],[['13:00',3300000],['15:00',3000000]],'58,000원',150);"
+          marker = "add('센텀사이언스','1층 더라움홀'"
+          for fn in ['index.html','latest.html']:
+              p=Path(fn)
+              s=p.read_text()
+              if "'미라벨가든'" not in s:
+                  s=s.replace(marker, insert+marker, 1)
+                  p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html latest.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Add Grand Blanc Mirabell Garden quotes'
+          git push
