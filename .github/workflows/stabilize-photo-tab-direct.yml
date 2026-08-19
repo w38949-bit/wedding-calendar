@@ -40,7 +40,7 @@ jobs:
               q=Path(fn)
               h=q.read_text()
               h=re.sub(r'<script src="queendom-gallery-override\.js\?v=[^"]+"></script>','',h)
-              h=h.replace('photos-20260819-1120.js"></script>','photos-20260819-1120.js?v=20260819-1240"></script>')
+              h=re.sub(r'photos-20260819-1120\.js(?:\?v=20260819-\d+)?', 'photos-20260819-1120.js?v=20260819-1241', h)
               q.write_text(h)
           PY
       - name: Commit stable direct photo tab
@@ -49,6 +49,6 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add photos-20260819-1120.js index.html latest.html
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Use direct stable local photo gallery'
+          git commit -m 'Load centered Centum Hotel photo layout'
           git push
-# retrigger 20260819-1240
+# retrigger 20260819-1241
