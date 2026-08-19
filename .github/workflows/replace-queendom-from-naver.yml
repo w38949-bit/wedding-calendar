@@ -18,85 +18,51 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-
-      - name: Download exact Queendom section photos
+      - name: Replace gallery with exact Queendom section URLs
         shell: bash
         run: |
-          python -m pip install --quiet requests beautifulsoup4 pillow
+          python -m pip install --quiet requests beautifulsoup4
           python - <<'PY'
-          import re, shutil, requests
+          import re, json, requests
           from pathlib import Path
           from bs4 import BeautifulSoup
-          from PIL import Image
-          from io import BytesIO
-
-          source='https://m.blog.naver.com/rh30921/224144337505'
           post='https://blog.naver.com/PostView.naver?blogId=rh30921&logNo=224144337505'
+          source='https://m.blog.naver.com/rh30921/224144337505'
           headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Referer':'https://blog.naver.com/','Accept-Language':'ko-KR,ko;q=0.9'}
-          r=requests.get(post,headers=headers,timeout=35); r.raise_for_status()
+          r=requests.get(post,headers=headers,timeout=30); r.raise_for_status()
           soup=BeautifulSoup(r.text,'html.parser')
-
-          # Walk SmartEditor components in article order. Select only images after
-          # "퀸덤홀 입구" and before "카로스홀 입구".
-          components=soup.select('.se-component')
-          if not components:
-              raise SystemExit('No SmartEditor components found')
           active=False; urls=[]
-          for comp in components:
+          for comp in soup.select('.se-component'):
               text=comp.get_text(' ',strip=True)
-              if ('퀸덤홀 입구' in text or '퀸텀홀 입구' in text):
-                  active=True
-              if active and '카로스홀 입구' in text:
-                  break
+              if ('퀸덤홀 입구' in text or '퀸텀홀 입구' in text): active=True
+              if active and '카로스홀 입구' in text: break
               if active:
                   for img in comp.select('img.se-image-resource, img'):
                       src=img.get('data-lazy-src') or img.get('data-src') or img.get('src') or ''
                       if ('postfiles.pstatic.net' in src or 'blogfiles.pstatic.net' in src) and src not in urls:
+                          src=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',src)
                           urls.append(src)
-          print('Queendom section URLs:',len(urls))
-          if len(urls)!=9:
-              # Cross-check supplied-HTML structure: Queendom is 9 consecutive tour images.
-              # If component nesting omitted the entrance label, use image positions bounded by text components.
-              raise SystemExit(f'Expected exactly 9 Queendom photos, got {len(urls)}')
-
-          root=Path('assets/grand-blanc/queendom')
-          if root.exists(): shutil.rmtree(root)
-          root.mkdir(parents=True,exist_ok=True)
-          for i,url in enumerate(urls,1):
-              url=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',url)
-              rr=requests.get(url,headers=headers,timeout=35); rr.raise_for_status()
-              im=Image.open(BytesIO(rr.content)).convert('RGB')
-              im.thumbnail((1600,1600))
-              im.save(root/f'{i:02d}.jpg','JPEG',quality=86,optimize=True)
-          (root/'source.txt').write_text(source+'\n',encoding='utf-8')
-          PY
-
-      - name: Replace Queendom gallery completely
-        shell: bash
-        run: |
-          python - <<'PY'
-          import re
-          from pathlib import Path
+          print('Queendom URLs',len(urls))
+          if len(urls)!=9: raise SystemExit(f'Expected 9 Queendom URLs, got {len(urls)}')
           p=Path('photos.js'); s=p.read_text(encoding='utf-8')
-          imgs=','.join(f"'assets/grand-blanc/queendom/{i:02d}.jpg'" for i in range(1,10))
-          new=f"'퀸덤홀(화이트홀)':{{source:'https://m.blog.naver.com/rh30921/224144337505',imgs:[{imgs}]}}"
+          imgs=','.join(json.dumps(u,ensure_ascii=False) for u in urls)
+          new=f"'퀸덤홀(화이트홀)':{{source:{json.dumps(source)},imgs:[{imgs}]}}"
           pattern=r"'퀸덤홀\(화이트홀\)':\{source:'[^']*',imgs:\[.*?\]\}"
           s,n=re.subn(pattern,new,s,count=1,flags=re.S)
           if n!=1: raise SystemExit(f'gallery replacement count={n}')
           p.write_text(s,encoding='utf-8')
-          version='20260819-1032'
+          Path('queendom-target-urls.json').write_text(json.dumps(urls,ensure_ascii=False,indent=2),encoding='utf-8')
+          version='20260819-1038'
           for name in ('index.html','latest.html'):
               q=Path(name); t=q.read_text(encoding='utf-8')
               t=re.sub(r'photos\.js\?v=[^\"\']+',f'photos.js?v={version}',t)
               q.write_text(t,encoding='utf-8')
           PY
-
       - name: Commit replacement
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add assets/grand-blanc/queendom photos.js index.html latest.html
-          git diff --cached --quiet && exit 0
-          git commit -m 'Replace Grand Blanc Queendom photos from supplied HTML source'
+          git add photos.js index.html latest.html queendom-target-urls.json
+          git commit -m 'Replace Grand Blanc Queendom gallery with supplied source photos'
           git push origin main
