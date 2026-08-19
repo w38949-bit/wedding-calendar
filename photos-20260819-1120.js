@@ -10,7 +10,8 @@ const PHOTO={
     '오페라홀':{source:'',imgs:seq('grand-moment/opera',2)}
   },
   '그랜드 블랑':{
-    '퀸덤홀(화이트홀)':{source:'',imgs:seq('grand-blanc/queendom',9)}
+    '퀸덤홀(화이트홀)':{source:'',imgs:seq('grand-blanc/queendom',9)},
+    '미라벨가든':{source:'',imgs:seq('grand-blanc/mirabell-garden/wedding-hall-original-photos-2/assets/grand-blanc/mirabell-garden',5)}
   },
   '센텀사이언스':{
     '1층 더라움홀':{source:'https://www.directwedding.co.kr/weddinghall/hall0241',imgs:[
