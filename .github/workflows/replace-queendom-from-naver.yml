@@ -34,56 +34,47 @@ jobs:
           source='https://m.blog.naver.com/rh30921/224144337505'
           post='https://blog.naver.com/PostView.naver?blogId=rh30921&logNo=224144337505'
           worker='https://naver-img-proxy.5126537.workers.dev/?url='+quote(post,safe='')
+          allorigins='https://api.allorigins.win/raw?url='+quote(post,safe='')
           headers={
             'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
             'Accept-Language':'ko-KR,ko;q=0.9,en;q=0.8',
             'Referer':'https://blog.naver.com/'
           }
           html=None
-          for url in (post,worker):
+          for url in (post,worker,allorigins):
             try:
-              r=requests.get(url,headers=headers,timeout=30)
-              if r.ok and ('퀸덤홀' in r.text or 'postfiles.pstatic.net' in r.text):
-                html=r.text
-                print('fetched',url,'bytes',len(html)); break
+              r=requests.get(url,headers=headers,timeout=35)
+              print('fetch',url,'status',r.status_code,'bytes',len(r.content))
+              if r.ok and ('postfiles.pstatic.net' in r.text or 'blogfiles.pstatic.net' in r.text):
+                html=r.text; break
             except Exception as e:
               print('fetch failed',url,e)
           if not html:
             raise SystemExit('Could not fetch Naver post HTML')
 
           soup=BeautifulSoup(html,'html.parser')
-          sequence=[]
-          seen=[]
-          for el in soup.find_all(['p','span','div','img']):
-            if el.name=='img':
-              src=el.get('data-lazy-src') or el.get('data-src') or el.get('src') or ''
-              if 'pstatic.net' in src and src not in seen:
-                seen.append(src); sequence.append(('img',src))
-            else:
-              text=el.get_text(' ',strip=True)
-              if text and (('퀸덤홀' in text) or ('퀸텀홀' in text) or ('카로스홀' in text)):
-                sequence.append(('text',text))
-
-          start=None; end=None
-          for i,(typ,val) in enumerate(sequence):
-            if typ=='text' and start is None and ('퀸덤홀 입구' in val or '퀸텀홀 입구' in val): start=i
-            if typ=='text' and start is not None and ('카로스홀 입구' in val): end=i; break
-          if start is None:
-            for i,(typ,val) in enumerate(sequence):
-              if typ=='text' and ('먼저 퀸덤홀' in val or '먼저 퀸텀홀' in val): start=max(0,i-1); break
-          if end is None and start is not None:
-            for i in range(start+1,len(sequence)):
-              typ,val=sequence[i]
-              if typ=='text' and '카로스홀' in val: end=i; break
-          if start is None or end is None:
-            raise SystemExit(f'Could not locate Queendom section boundaries: start={start}, end={end}')
           urls=[]
-          for typ,val in sequence[start:end]:
-            if typ=='img' and val not in urls: urls.append(val)
-          print('section image count',len(urls))
-          if len(urls)<9:
-            raise SystemExit(f'Expected at least 9 Queendom images, got {len(urls)}')
-          urls=urls[:9]
+          # SmartEditor resource images, in article order.
+          candidates=soup.select('img.se-image-resource') or soup.find_all('img')
+          for img in candidates:
+            src=img.get('data-lazy-src') or img.get('data-src') or img.get('src') or ''
+            if ('postfiles.pstatic.net' in src or 'blogfiles.pstatic.net' in src) and src not in urls:
+              urls.append(src)
+          print('article image count',len(urls))
+          if len(urls)<15:
+            # fallback: extract pstatic image URLs from HTML in first-occurrence order
+            rx=re.compile(r'https?://(?:postfiles|blogfiles)\.pstatic\.net/[^\"\'<> ]+')
+            for src in rx.findall(html.replace('\\u0026','&')):
+              src=src.replace('&amp;','&')
+              if src not in urls: urls.append(src)
+            print('fallback image count',len(urls))
+          if len(urls)<15:
+            raise SystemExit(f'Expected at least 15 article images, got {len(urls)}')
+
+          # Supplied HTML has 32 body figures; Queendom is figures 7 through 15 inclusive.
+          urls=urls[6:15]
+          if len(urls)!=9:
+            raise SystemExit(f'Queendom slice count={len(urls)}')
 
           root=Path('assets/grand-blanc/queendom')
           if root.exists(): shutil.rmtree(root)
@@ -91,7 +82,7 @@ jobs:
           saved=[]
           for i,url in enumerate(urls,1):
             url=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',url)
-            rr=requests.get(url,headers=headers,timeout=30)
+            rr=requests.get(url,headers=headers,timeout=35)
             rr.raise_for_status()
             im=Image.open(BytesIO(rr.content)).convert('RGB')
             im.thumbnail((1600,1600))
@@ -108,7 +99,6 @@ jobs:
           python - <<'PY'
           import re
           from pathlib import Path
-
           p=Path('photos.js')
           s=p.read_text(encoding='utf-8')
           new="'퀸덤홀(화이트홀)':{source:'https://m.blog.naver.com/rh30921/224144337505',imgs:["+','.join([f"'assets/grand-blanc/queendom/{i:02d}.jpg'" for i in range(1,10)])+"]}"
@@ -116,8 +106,7 @@ jobs:
           s2,n=re.subn(pattern,new,s,count=1,flags=re.S)
           if n!=1: raise SystemExit(f'Queendom gallery object replacement count={n}')
           p.write_text(s2,encoding='utf-8')
-
-          version='20260819-1018'
+          version='20260819-1024'
           for name in ('index.html','latest.html'):
             q=Path(name); t=q.read_text(encoding='utf-8')
             t=re.sub(r'photos\.js\?v=[^\"\']+',f'photos.js?v={version}',t)
