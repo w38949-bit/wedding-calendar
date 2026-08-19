@@ -34,29 +34,13 @@ jobs:
               if old in s:
                   s=s.replace(old,new)
 
-          # Keep the original photo-tab logic, but make layout pure CSS masonry and preserve image ratios.
-          marker="document.head.appendChild(style);"
-          extra="""
-const stablePhotoStyle=document.createElement('style');
-stablePhotoStyle.textContent=`
-.photogrid{display:block!important;columns:2;column-gap:12px;margin-top:12px!important}
-.photoitem{display:inline-block;width:100%;break-inside:avoid;margin:0 0 12px;vertical-align:top}
-.photoitem img{width:100%!important;height:auto!important;aspect-ratio:auto!important;object-fit:contain!important}
-.photo-meta a[href=\"\"],.photosource[href=\"\"]{display:none!important}
-@media(max-width:620px){.photogrid{columns:1!important}}
-`;
-document.head.appendChild(stablePhotoStyle);
-"""
-          if 'const stablePhotoStyle=' not in s:
-              s=s.replace(marker, marker+'\n'+extra)
-
           p.write_text(s)
 
-          # Remove every experimental gallery override from the actual pages.
           for fn in ['index.html','latest.html']:
               q=Path(fn)
               h=q.read_text()
               h=re.sub(r'<script src="queendom-gallery-override\.js\?v=[^"]+"></script>','',h)
+              h=h.replace('photos-20260819-1120.js"></script>','photos-20260819-1120.js?v=20260819-1240"></script>')
               q.write_text(h)
           PY
       - name: Commit stable direct photo tab
@@ -67,3 +51,4 @@ document.head.appendChild(stablePhotoStyle);
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Use direct stable local photo gallery'
           git push
+# retrigger 20260819-1240
