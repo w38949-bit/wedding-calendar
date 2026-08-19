@@ -1,0 +1,69 @@
+name: stabilize-photo-tab-direct
+on:
+  push:
+    paths:
+      - '.github/workflows/stabilize-photo-tab-direct.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stabilize photo tab
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('photos-20260819-1120.js')
+          s=p.read_text()
+          root='wedding-hall-original-photos/assets'
+          def imgs(base,n):
+              return '['+','.join(repr(f'{root}/{base}/{i:02d}.jpg') for i in range(1,n+1))+']'
+
+          replacements={
+            "'시그니처홀':{source:'',imgs:[]}": f"'시그니처홀':{{source:'',imgs:{imgs('grand-moment/signature',6)}}}",
+            "'베일홀':{source:'',imgs:[]}": f"'베일홀':{{source:'',imgs:{imgs('grand-moment/veil',3)}}}",
+            "'클래식홀':{source:'',imgs:[]}": f"'클래식홀':{{source:'',imgs:{imgs('grand-moment/classic',4)}}}",
+            "'엘라홀':{source:'',imgs:[]}": f"'엘라홀':{{source:'',imgs:{imgs('grand-moment/ella',4)}}}",
+            "'오페라홀':{source:'',imgs:[]}": f"'오페라홀':{{source:'',imgs:{imgs('grand-moment/opera',2)}}}",
+            "'퀸덤홀(화이트홀)':{source:'',imgs:[]}": f"'퀸덤홀(화이트홀)':{{source:'',imgs:{imgs('grand-blanc/queendom',9)}}}",
+          }
+          for old,new in replacements.items():
+              if old in s:
+                  s=s.replace(old,new)
+
+          # Keep the original photo-tab logic, but make layout pure CSS masonry and preserve image ratios.
+          marker="document.head.appendChild(style);"
+          extra="""
+const stablePhotoStyle=document.createElement('style');
+stablePhotoStyle.textContent=`
+.photogrid{display:block!important;columns:2;column-gap:12px;margin-top:12px!important}
+.photoitem{display:inline-block;width:100%;break-inside:avoid;margin:0 0 12px;vertical-align:top}
+.photoitem img{width:100%!important;height:auto!important;aspect-ratio:auto!important;object-fit:contain!important}
+.photo-meta a[href=\"\"],.photosource[href=\"\"]{display:none!important}
+@media(max-width:620px){.photogrid{columns:1!important}}
+`;
+document.head.appendChild(stablePhotoStyle);
+"""
+          if 'const stablePhotoStyle=' not in s:
+              s=s.replace(marker, marker+'\n'+extra)
+
+          p.write_text(s)
+
+          # Remove every experimental gallery override from the actual pages.
+          for fn in ['index.html','latest.html']:
+              q=Path(fn)
+              h=q.read_text()
+              h=re.sub(r'<script src="queendom-gallery-override\.js\?v=[^"]+"></script>','',h)
+              q.write_text(h)
+          PY
+      - name: Commit stable direct photo tab
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add photos-20260819-1120.js index.html latest.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Use direct stable local photo gallery'
+          git push
