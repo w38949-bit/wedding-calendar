@@ -1,0 +1,24 @@
+name: Bump balanced masonry cache
+on:
+  push:
+    paths:
+      - '.github/workflows/bump-balanced-masonry-1212.yml'
+permissions:
+  contents: write
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update gallery loader cache version
+        run: |
+          sed -i 's/queendom-gallery-override.js?v=20260819-1207/queendom-gallery-override.js?v=20260819-1212/g' index.html latest.html
+      - name: Commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add index.html latest.html
+          if ! git diff --cached --quiet; then
+            git commit -m 'Load balanced masonry gallery'
+            git push
+          fi
