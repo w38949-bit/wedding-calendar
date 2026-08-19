@@ -18,51 +18,104 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Replace gallery with exact Queendom section URLs
+
+      - name: Store exact Queendom photos locally and prune broken URLs
         shell: bash
         run: |
-          python -m pip install --quiet requests beautifulsoup4
+          python -m pip install --quiet requests pillow
           python - <<'PY'
-          import re, json, requests
+          import io, json, re, shutil, requests
           from pathlib import Path
-          from bs4 import BeautifulSoup
-          post='https://blog.naver.com/PostView.naver?blogId=rh30921&logNo=224144337505'
-          source='https://m.blog.naver.com/rh30921/224144337505'
-          headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Referer':'https://blog.naver.com/','Accept-Language':'ko-KR,ko;q=0.9'}
-          r=requests.get(post,headers=headers,timeout=30); r.raise_for_status()
-          soup=BeautifulSoup(r.text,'html.parser')
-          active=False; urls=[]
-          for comp in soup.select('.se-component'):
-              text=comp.get_text(' ',strip=True)
-              if ('퀸덤홀 입구' in text or '퀸텀홀 입구' in text): active=True
-              if active and '카로스홀 입구' in text: break
-              if active:
-                  for img in comp.select('img.se-image-resource, img'):
-                      src=img.get('data-lazy-src') or img.get('data-src') or img.get('src') or ''
-                      if ('postfiles.pstatic.net' in src or 'blogfiles.pstatic.net' in src) and src not in urls:
-                          src=re.sub(r'([?&])type=w\d+(?:_blur)?',r'\1type=w1600',src)
-                          urls.append(src)
-          print('Queendom URLs',len(urls))
-          if len(urls)!=9: raise SystemExit(f'Expected 9 Queendom URLs, got {len(urls)}')
-          p=Path('photos.js'); s=p.read_text(encoding='utf-8')
-          imgs=','.join(json.dumps(u,ensure_ascii=False) for u in urls)
-          new=f"'퀸덤홀(화이트홀)':{{source:{json.dumps(source)},imgs:[{imgs}]}}"
-          pattern=r"'퀸덤홀\(화이트홀\)':\{source:'[^']*',imgs:\[.*?\]\}"
-          s,n=re.subn(pattern,new,s,count=1,flags=re.S)
-          if n!=1: raise SystemExit(f'gallery replacement count={n}')
+          from urllib.parse import quote
+          from PIL import Image
+
+          headers={
+              'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+              'Referer':'https://blog.naver.com/',
+              'Accept-Language':'ko-KR,ko;q=0.9'
+          }
+
+          # 1) Save the exact 9 Queendom photos already extracted from the supplied HTML/source post.
+          urls=json.loads(Path('queendom-target-urls.json').read_text(encoding='utf-8'))
+          if len(urls)!=9:
+              raise SystemExit(f'Expected exactly 9 Queendom source URLs, got {len(urls)}')
+          root=Path('assets/grand-blanc/queendom')
+          if root.exists():
+              shutil.rmtree(root)
+          root.mkdir(parents=True,exist_ok=True)
+          local_paths=[]
+          for i,url in enumerate(urls,1):
+              r=requests.get(url,headers=headers,timeout=40)
+              r.raise_for_status()
+              im=Image.open(io.BytesIO(r.content)).convert('RGB')
+              im.thumbnail((1600,1600))
+              out=root/f'{i:02d}.jpg'
+              im.save(out,'JPEG',quality=86,optimize=True)
+              local_paths.append(str(out).replace('\\','/'))
+          (root/'source.txt').write_text('https://m.blog.naver.com/rh30921/224144337505\n',encoding='utf-8')
+
+          # 2) Replace the Queendom gallery completely with those local files.
+          p=Path('photos.js')
+          s=p.read_text(encoding='utf-8')
+          local_imgs=','.join(json.dumps(x,ensure_ascii=False) for x in local_paths)
+          new=f"'퀸덤홀(화이트홀)':{{source:'https://m.blog.naver.com/rh30921/224144337505',imgs:[{local_imgs}]}}"
+          pat=r"'퀸덤홀\(화이트홀\)':\{source:[^,]+,imgs:\[.*?\]\}"
+          s,n=re.subn(pat,new,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'Queendom gallery replacement count={n}')
+
+          # 3) Permanently remove external image URLs that fail using the same route the page uses.
+          removed=[]
+          checked={}
+          def works(url):
+              if url.startswith('assets/'):
+                  return Path(url).exists()
+              if url in checked:
+                  return checked[url]
+              test=url
+              if any(host in url for host in ('blog.kakaocdn.net','postfiles.pstatic.net','blogfiles.pstatic.net')):
+                  test='https://wsrv.nl/?url='+quote(url,safe='')+'&w=320&q=70&output=webp'
+              try:
+                  rr=requests.get(test,headers={'User-Agent':headers['User-Agent']},timeout=25,allow_redirects=True)
+                  ctype=rr.headers.get('content-type','').lower()
+                  ok=rr.ok and ('image/' in ctype or len(rr.content)>5000)
+              except Exception:
+                  ok=False
+              checked[url]=ok
+              return ok
+
+          def clean_imgs(match):
+              body=match.group(1)
+              vals=re.findall(r"(['\"])(.*?)\1",body,flags=re.S)
+              kept=[]
+              for _,url in vals:
+                  if works(url):
+                      kept.append(url)
+                  else:
+                      removed.append(url)
+              return 'imgs:['+','.join(json.dumps(u,ensure_ascii=False) for u in kept)+']'
+
+          s=re.sub(r'imgs:\[(.*?)\]',clean_imgs,s,flags=re.S)
           p.write_text(s,encoding='utf-8')
-          Path('queendom-target-urls.json').write_text(json.dumps(urls,ensure_ascii=False,indent=2),encoding='utf-8')
-          version='20260819-1038'
+          Path('photo-prune-report.txt').write_text(
+              'Removed permanently: '+str(len(removed))+'\n'+'\n'.join(removed)+'\n',encoding='utf-8'
+          )
+
+          # 4) Cache-bust both entry pages.
+          version='20260819-1045'
           for name in ('index.html','latest.html'):
-              q=Path(name); t=q.read_text(encoding='utf-8')
+              q=Path(name)
+              t=q.read_text(encoding='utf-8')
               t=re.sub(r'photos\.js\?v=[^\"\']+',f'photos.js?v={version}',t)
               q.write_text(t,encoding='utf-8')
           PY
-      - name: Commit replacement
+
+      - name: Commit replacement and permanent cleanup
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add photos.js index.html latest.html queendom-target-urls.json
-          git commit -m 'Replace Grand Blanc Queendom gallery with supplied source photos'
+          git add assets/grand-blanc/queendom photos.js index.html latest.html photo-prune-report.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Replace Queendom locally and remove broken gallery photos'
           git push origin main
