@@ -1,0 +1,31 @@
+name: Bump balanced photo layout cache
+on:
+  push:
+    paths:
+      - '.github/workflows/bump-photo-layout-1201.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh loader version
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in ['index.html','latest.html']:
+              p=Path(name)
+              s=p.read_text()
+              s=s.replace('queendom-gallery-override.js?v=20260819-1156','queendom-gallery-override.js?v=20260819-1201')
+              p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh balanced photo gallery layout'
+          git push
