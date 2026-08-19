@@ -1,0 +1,39 @@
+name: Bump photo failure cleanup cache
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/bump-photo-failure-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Bump proxy script cache version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          for name in ('index.html','latest.html'):
+              p=Path(name)
+              s=p.read_text(encoding='utf-8')
+              s=re.sub(r'photo-proxy-fix\.js\?v=[^\"\']+', 'photo-proxy-fix.js?v=20260819-1008', s)
+              p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit cache bump
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh photo failure cleanup script'
+          git push origin main
