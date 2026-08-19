@@ -20,7 +20,9 @@
           img.dataset.proxyRetried='1';
           item?.classList.remove('broken');
           img.src='https://wsrv.nl/?url='+encodeURIComponent(original)+'&default=1';
-        }else item?.classList.add('broken');
+        }else{
+          item?.remove();
+        }
       };
     });
   }
