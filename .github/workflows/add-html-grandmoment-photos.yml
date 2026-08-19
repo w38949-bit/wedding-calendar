@@ -1,4 +1,4 @@
-name: Add Grand Moment photos from uploaded HTML source
+name: Finalize Grand Moment photos from supplied HTML
 
 on:
   push:
@@ -11,78 +11,32 @@ permissions:
   contents: write
 
 jobs:
-  import-photos:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
-
-      - name: Add correctly classified Naver photo URLs
+      - name: Remove legacy misclassified Naver block
         shell: bash
         run: |
           python - <<'PY'
-          import json,re
+          import re
           from pathlib import Path
-
-          src=json.loads(Path('naver-grandmoment-extract.json').read_text(encoding='utf-8'))
-          sequence=[('클래식홀',4),('엘라홀',4),('베일홀',3),('오페라홀',3),('시그니처홀',6)]
-          grouped={h:[] for h,_ in sequence}
-          started=False
-          hall_i=0
-          for item in src['items']:
-              if item.get('type')=='text' and item.get('text','').strip().startswith('1_클래식 홀'):
-                  started=True
-                  continue
-              if not started or item.get('type')!='image' or hall_i>=len(sequence):
-                  continue
-              hall,expected=sequence[hall_i]
-              u=item.get('url')
-              if u and u not in grouped[hall]: grouped[hall].append(u)
-              if len(grouped[hall])==expected: hall_i+=1
-
-          counts={h:len(v) for h,v in grouped.items()}
-          expected=dict(sequence)
-          print('classified counts',counts)
-          if counts!=expected: raise SystemExit(f'classification mismatch: {counts}')
-
           p=Path('photos.js'); s=p.read_text(encoding='utf-8')
-          start='/* HTML_GRANDMOMENT_PHOTOS_START */'; end='/* HTML_GRANDMOMENT_PHOTOS_END */'
-          data=json.dumps(grouped,ensure_ascii=False)
-          block=(start+'\n'+
-                 f'const HTML_GM_PHOTOS={data};\n'+
-                 "Object.entries(HTML_GM_PHOTOS).forEach(([hall,imgs])=>{const g=PHOTO['그랜드 모먼트']&&PHOTO['그랜드 모먼트'][hall];if(g)imgs.forEach(src=>{if(!g.imgs.includes(src))g.imgs.push(src)})});\n"+
-                 end)
-          if start in s:
-              s=re.sub(re.escape(start)+r'.*?'+re.escape(end),block,s,flags=re.S)
-          else:
-              anchor="\n\nconst style=document.createElement('style');"
-              if anchor not in s: raise SystemExit('photos.js style anchor missing')
-              s=s.replace(anchor,'\n\n'+block+anchor,1)
+          s=re.sub(r'/\* NAVER_GRANDMOMENT_EXTRA_START \*/.*?/\* NAVER_GRANDMOMENT_EXTRA_END \*/\s*','',s,flags=re.S)
           p.write_text(s,encoding='utf-8')
-
-          # Naver images may also need the same image proxy fallback as Kakao CDN.
-          q=Path('photo-proxy-fix.js'); t=q.read_text(encoding='utf-8')
-          t=t.replace("if(!src||!src.includes('blog.kakaocdn.net')) return src;",
-                      "if(!src||(!src.includes('blog.kakaocdn.net')&&!src.includes('postfiles.pstatic.net')&&!src.includes('blogfiles.pstatic.net'))) return src;")
-          q.write_text(t,encoding='utf-8')
-
-          version='20260819-1018'
-          proxyver='20260819-1018'
           for name in ('index.html','latest.html'):
-              f=Path(name); x=f.read_text(encoding='utf-8')
-              x=re.sub(r'photos\.js\?v=[^\"\']+',f'photos.js?v={version}',x)
-              x=re.sub(r'photo-proxy-fix\.js\?v=[^\"\']+',f'photo-proxy-fix.js?v={proxyver}',x)
-              f.write_text(x,encoding='utf-8')
+              q=Path(name); t=q.read_text(encoding='utf-8')
+              t=re.sub(r'photos\.js\?v=[^\"\']+','photos.js?v=20260819-1022',t)
+              q.write_text(t,encoding='utf-8')
           PY
-
-      - name: Commit gallery update
+      - name: Commit cleanup
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add photos.js photo-proxy-fix.js index.html latest.html
+          git add photos.js index.html latest.html
           git diff --cached --quiet && exit 0
-          git commit -m 'Add 20 Grand Moment photos from supplied HTML'
+          git commit -m 'Keep only correctly classified Grand Moment HTML photos'
           git push origin main
