@@ -12,7 +12,7 @@
     }
   };
   const TOTAL=29;
-  const VERSION='20260819-1114';
+  const VERSION='20260819-1120';
   const PARTS=['part01','part01b','part02','part03','part04','part05','part06'];
   let spritePromise=null;
 
@@ -33,17 +33,15 @@
     const ids=MAP[venue]?.[hall];
     if(!ids)return;
     const res=document.getElementById('res');
-    const grid=res?.querySelector('.photogrid');
-    if(!grid)return;
+    if(!res)return;
     const key=`${venue}|${hall}`;
-    if(grid.dataset.htmlSprite===key)return;
-    grid.dataset.htmlSprite=key;
-    const meta=res.querySelector('.photo-meta span');
-    if(meta)meta.textContent=`HTML에서 추출한 사진 ${ids.length}장`;
-    res.querySelector('.photo-meta a')?.remove();
+    if(res.dataset.htmlSprite===key)return;
+    res.dataset.htmlSprite=key;
+    res.innerHTML=`<div class="photo-meta"><span>HTML에서 추출한 사진 ${ids.length}장</span></div><div class="photogrid" data-html-sprite-grid="1"></div>`;
+    const grid=res.querySelector('.photogrid');
     try{
       const sprite=await loadSprite();
-      if(!grid.isConnected||active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
+      if(!res.isConnected||active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
       grid.innerHTML=ids.map((idx,i)=>{
         const y=idx*100/(TOTAL-1);
         return `<div class="photoitem"><div class="html-sprite-photo" role="img" aria-label="${venue} ${hall} 사진 ${i+1}" style="background-image:url('${sprite}');background-position:center ${y}%"></div></div>`;
@@ -58,6 +56,6 @@
   style.textContent='.html-sprite-photo{display:block;width:100%;aspect-ratio:4/3;background-size:100% 2900%;background-repeat:no-repeat;background-color:#f1ede8}.photoitem:has(.html-sprite-photo){padding:0}';
   document.head.appendChild(style);
   new MutationObserver(()=>queueMicrotask(apply)).observe(document.documentElement,{childList:true,subtree:true});
-  document.addEventListener('click',()=>setTimeout(apply,0),true);
+  document.addEventListener('click',()=>setTimeout(()=>{const r=document.getElementById("res");if(r)delete r.dataset.htmlSprite;apply()},0),true);
   apply();
 })();
