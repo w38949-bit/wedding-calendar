@@ -1,0 +1,3 @@
+direct: status=200 bytes=337656 smart=27 regex=91 queendom=True caros=True
+worker: status=200 bytes=337656 smart=27 regex=91 queendom=True caros=True
+allorigins: status=500 bytes=579 smart=0 regex=0 queendom=False caros=False
