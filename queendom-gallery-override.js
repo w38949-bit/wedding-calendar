@@ -13,10 +13,22 @@
       '퀸덤홀(화이트홀)':seq('grand-blanc/queendom',9)
     }
   };
-  const VERSION='20260819-1207';
+  const VERSION='20260819-1212';
   const active=sel=>document.querySelector(sel)?.textContent?.trim()||'';
+  let renderToken=0;
 
-  function apply(){
+  const preload=src=>new Promise(resolve=>{
+    const im=new Image();
+    im.onload=()=>resolve({src,ratio:im.naturalHeight/im.naturalWidth});
+    im.onerror=()=>resolve(null);
+    im.src=`${src}?v=${VERSION}`;
+  });
+
+  function card(item,venue,hall,i){
+    return `<div class="photoitem local-original-item"><img class="local-original-photo" src="${item.src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></div>`;
+  }
+
+  async function apply(){
     if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
     const venue=active('#vt .tab.a');
     const hall=active('#ht .tab.a');
@@ -26,24 +38,43 @@
     if(!res)return;
     const key=`${venue}|${hall}`;
     if(res.querySelector(`.photogrid[data-local-original="${CSS.escape(key)}"]`))return;
-    res.innerHTML=`<div class="photo-meta local-original-meta"><span>저장된 원본 사진 ${imgs.length}장</span></div><div class="photogrid local-original-grid" data-local-original="${key}">${imgs.map((src,i)=>`<div class="photoitem local-original-item"><img class="local-original-photo" src="${src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></div>`).join('')}</div>`;
+    const token=++renderToken;
+    res.innerHTML=`<div class="photo-meta local-original-meta"><span>저장된 원본 사진 ${imgs.length}장</span></div><div class="local-photo-loading">사진 정렬 중…</div>`;
+    const loaded=(await Promise.all(imgs.map(preload))).filter(Boolean);
+    if(token!==renderToken)return;
+    if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
+    if(active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
+
+    if(matchMedia('(max-width:620px)').matches){
+      res.innerHTML=`<div class="photo-meta local-original-meta"><span>저장된 원본 사진 ${loaded.length}장</span></div><div class="photogrid local-original-grid one-col" data-local-original="${key}">${loaded.map((x,i)=>card(x,venue,hall,i)).join('')}</div>`;
+      return;
+    }
+
+    const items=loaded.map((x,i)=>({...x,idx:i})).sort((a,b)=>b.ratio-a.ratio);
+    const cols=[[],[]],heights=[0,0];
+    for(const item of items){
+      const c=heights[0]<=heights[1]?0:1;
+      cols[c].push(item);
+      heights[c]+=item.ratio+0.035;
+    }
+    res.innerHTML=`<div class="photo-meta local-original-meta"><span>저장된 원본 사진 ${loaded.length}장</span></div><div class="photogrid local-original-grid balanced" data-local-original="${key}"><div class="local-photo-col">${cols[0].map(x=>card(x,venue,hall,x.idx)).join('')}</div><div class="local-photo-col">${cols[1].map(x=>card(x,venue,hall,x.idx)).join('')}</div></div>`;
   }
 
   const style=document.createElement('style');
   style.textContent=`
-    .photogrid.local-original-grid{
+    .photogrid.local-original-grid.balanced{
       display:grid!important;
-      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
       gap:14px!important;
-      width:min(100%,820px)!important;
+      width:min(100%,860px)!important;
       margin:12px auto 0!important;
       align-items:start!important;
       justify-content:center!important;
     }
+    .local-photo-col{display:flex!important;flex-direction:column!important;gap:14px!important;min-width:0!important;width:100%!important}
+    .photogrid.local-original-grid.one-col{display:flex!important;flex-direction:column!important;gap:12px!important;width:min(100%,560px)!important;margin:12px auto 0!important}
     .photogrid.local-original-grid .photoitem.local-original-item{
-      display:flex!important;
-      align-items:flex-start!important;
-      justify-content:center!important;
+      display:block!important;
       width:100%!important;
       margin:0!important;
       padding:0!important;
@@ -63,21 +94,16 @@
       margin:0!important;
     }
     .photo-meta.local-original-meta{
-      width:min(100%,820px)!important;
+      width:min(100%,860px)!important;
       margin:14px auto 0!important;
+      text-align:center!important;
     }
+    .local-photo-loading{width:min(100%,860px);margin:12px auto;padding:24px;text-align:center;color:#8a817a}
     .photo-meta a,.photosource{display:none!important}
-    @media(max-width:620px){
-      .photogrid.local-original-grid{
-        grid-template-columns:1fr!important;
-        width:min(100%,560px)!important;
-        gap:12px!important;
-      }
-      .photo-meta.local-original-meta{width:min(100%,560px)!important}
-    }
   `;
   document.head.appendChild(style);
   new MutationObserver(()=>queueMicrotask(apply)).observe(document.documentElement,{childList:true,subtree:true});
   document.addEventListener('click',()=>setTimeout(apply,0),true);
+  addEventListener('resize',()=>setTimeout(()=>{const g=document.querySelector('.photogrid[data-local-original]');if(g){g.removeAttribute('data-local-original');apply()}},80));
   apply();
 })();
