@@ -1,0 +1,214 @@
+name: Materialize HTML-derived wedding photos
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/materialize-html-photos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Match HTML-extracted photos and save local JPGs
+        shell: bash
+        run: |
+          python -m pip install --quiet requests beautifulsoup4 pillow
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import quote
+          from bs4 import BeautifulSoup
+          from PIL import Image, ImageOps
+          import io, re, requests, shutil
+
+          EXPECTED = {'gb/01.jpg': 'c6ccdb85a54d8b9b',
+ 'gb/02.jpg': '872f2361c5870179',
+ 'gb/03.jpg': '616323734b218039',
+ 'gb/04.jpg': '9c1c4b5b4f4b0b17',
+ 'gb/05.jpg': '65f080362486f9e8',
+ 'gb/06.jpg': '0cc1878638288808',
+ 'gb/07.jpg': 'e6e30fcccecf19df',
+ 'gb/08.jpg': '0e8e4c0f2e6ccd8f',
+ 'gb/09.jpg': 'ee883c3707c9bed1',
+ 'gm/classic-01.jpg': '554ecc690b0e0f0f',
+ 'gm/classic-02.jpg': '339ad6eccc0d0f0f',
+ 'gm/classic-03.jpg': '863272f3f7732733',
+ 'gm/classic-04.jpg': '74921632b2125287',
+ 'gm/ella-01.jpg': '6ccc2b234d172968',
+ 'gm/ella-02.jpg': '8fcc4d698e1569c8',
+ 'gm/ella-03.jpg': '3034d5cbc21e3e4f',
+ 'gm/ella-04.jpg': 'b134226a6a1131ef',
+ 'gm/opera-01.jpg': '49535b3e329da6d7',
+ 'gm/opera-02.jpg': 'cd99337b6b764627',
+ 'gm/opera-03.jpg': '416833375d0f9180',
+ 'gm/signature-01.jpg': '3371b2f0d88d0d84',
+ 'gm/signature-02.jpg': '59191f272b9f8780',
+ 'gm/signature-03.jpg': 'ada2a6afadb7a572',
+ 'gm/signature-04.jpg': 'db6b2babe715c7c3',
+ 'gm/signature-05.jpg': '3e3660b236963662',
+ 'gm/signature-06.jpg': '560d0f1f326b4f1a',
+ 'gm/veil-01.jpg': 'cf4d69ba4f296d68',
+ 'gm/veil-02.jpg': '460d8dcc690f4acc',
+ 'gm/veil-03.jpg': 'da9f97a72dc9f33a'}
+
+          SOURCES = {
+              'gm': 'https://blog.naver.com/PostView.naver?blogId=qorrkdnjs&logNo=223451943421',
+              'gb': 'https://blog.naver.com/PostView.naver?blogId=rh30921&logNo=224144337505',
+          }
+          HEADERS = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+              'Referer': 'https://blog.naver.com/',
+              'Accept-Language': 'ko-KR,ko;q=0.9',
+          }
+          WORKER = 'https://naver-img-proxy.5126537.workers.dev/?url='
+
+          def dhash_image(im, hash_size=8):
+              im = ImageOps.exif_transpose(im).convert('L').resize((hash_size + 1, hash_size))
+              px = list(im.getdata())
+              value = 0
+              for y in range(hash_size):
+                  row = px[y * (hash_size + 1):(y + 1) * (hash_size + 1)]
+                  for x in range(hash_size):
+                      value = (value << 1) | int(row[x] > row[x + 1])
+              return f'{value:016x}'
+
+          def hdist(a, b):
+              return (int(a, 16) ^ int(b, 16)).bit_count()
+
+          def fetch_page_images(url):
+              r = requests.get(url, headers=HEADERS, timeout=40)
+              r.raise_for_status()
+              soup = BeautifulSoup(r.text, 'html.parser')
+              urls = []
+              for img in soup.select('img'):
+                  src = img.get('data-lazy-src') or img.get('data-src') or img.get('src') or ''
+                  if 'pstatic.net' not in src:
+                      continue
+                  src = src.replace('&amp;', '&')
+                  if src.startswith('//'):
+                      src = 'https:' + src
+                  if src not in urls:
+                      urls.append(src)
+              return urls
+
+          def fetch_image(url):
+              tries = [
+                  WORKER + quote(url, safe=''),
+                  url,
+              ]
+              last = None
+              for target in tries:
+                  try:
+                      headers = {'User-Agent': HEADERS['User-Agent']}
+                      if target == url:
+                          headers['Referer'] = HEADERS['Referer']
+                      r = requests.get(target, headers=headers, timeout=45, allow_redirects=True)
+                      r.raise_for_status()
+                      im = Image.open(io.BytesIO(r.content))
+                      im.load()
+                      return im
+                  except Exception as e:
+                      last = e
+              raise last
+
+          def load_candidates(source_key):
+              urls = fetch_page_images(SOURCES[source_key])
+              print(source_key, 'candidate URLs', len(urls))
+              candidates = []
+              for i, url in enumerate(urls):
+                  try:
+                      im = fetch_image(url)
+                      h = dhash_image(im)
+                      candidates.append((i, url, h, im.copy()))
+                  except Exception as e:
+                      print('skip', i, url[:100], e)
+              print(source_key, 'downloaded candidates', len(candidates))
+              return candidates
+
+          def output_path(key):
+              _, name = key.split('/', 1)
+              if key.startswith('gm/'):
+                  return Path('assets/grand-moment/html') / name
+              return Path('assets/grand-blanc/queendom') / name
+
+          for folder in (Path('assets/grand-moment/html'), Path('assets/grand-blanc/queendom')):
+              if folder.exists():
+                  shutil.rmtree(folder)
+              folder.mkdir(parents=True, exist_ok=True)
+
+          for source_key in ('gm', 'gb'):
+              candidates = load_candidates(source_key)
+              expected = [(k, h) for k, h in EXPECTED.items() if k.startswith(source_key + '/')]
+              used = set()
+              for key, target_hash in expected:
+                  ranked = sorted(
+                      (hdist(target_hash, h), idx, url, im)
+                      for idx, url, h, im in candidates
+                      if idx not in used
+                  )
+                  if not ranked:
+                      raise SystemExit(f'No candidates left for {key}')
+                  dist, idx, url, im = ranked[0]
+                  print('match', key, 'distance', dist, 'candidate', idx)
+                  if dist > 14:
+                      raise SystemExit(f'Image fingerprint mismatch for {key}: distance={dist}')
+                  used.add(idx)
+                  out = output_path(key)
+                  im = ImageOps.exif_transpose(im).convert('RGB')
+                  im.thumbnail((1600, 1600))
+                  im.save(out, 'JPEG', quality=88, optimize=True)
+
+          expected_gm = sorted(k for k in EXPECTED if k.startswith('gm/'))
+          expected_gb = sorted(k for k in EXPECTED if k.startswith('gb/'))
+          if len(list(Path('assets/grand-moment/html').glob('*.jpg'))) != len(expected_gm):
+              raise SystemExit('Grand Moment local image count mismatch')
+          if len(list(Path('assets/grand-blanc/queendom').glob('*.jpg'))) != len(expected_gb):
+              raise SystemExit('Grand Blanc local image count mismatch')
+
+          sets = {
+              '그랜드 모먼트': {
+                  '클래식홀': [f'assets/grand-moment/html/classic-{i:02d}.jpg' for i in range(1, 5)],
+                  '엘라홀': [f'assets/grand-moment/html/ella-{i:02d}.jpg' for i in range(1, 5)],
+                  '베일홀': [f'assets/grand-moment/html/veil-{i:02d}.jpg' for i in range(1, 4)],
+                  '오페라홀': [f'assets/grand-moment/html/opera-{i:02d}.jpg' for i in range(1, 4)],
+                  '시그니처홀': [f'assets/grand-moment/html/signature-{i:02d}.jpg' for i in range(1, 7)],
+              },
+              '그랜드 블랑': {
+                  '퀸덤홀(화이트홀)': [f'assets/grand-blanc/queendom/{i:02d}.jpg' for i in range(1, 10)],
+              },
+          }
+
+          import json
+          js = '''(()=>{\nconst LOCAL=%s;\nfunction active(sel){return document.querySelector(sel)?.textContent?.trim()||''}\nfunction apply(){\n if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;\n const venue=active('#vt .tab.a'),hall=active('#ht .tab.a'),imgs=LOCAL[venue]?.[hall];\n if(!imgs)return;\n const res=document.getElementById('res'),grid=res?.querySelector('.photogrid');\n if(!grid)return;\n const key=venue+'|'+hall;if(grid.dataset.htmlLocal===key)return;grid.dataset.htmlLocal=key;\n const meta=res.querySelector('.photo-meta span');if(meta)meta.textContent=`HTML에서 추출한 사진 ${imgs.length}장`;\n const source=res.querySelector('.photo-meta a');if(source)source.remove();\n grid.innerHTML=imgs.map((src,i)=>`<div class="photoitem"><a href="${src}" target="_blank" rel="noopener noreferrer"><img src="${src}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></a></div>`).join('');\n}\nnew MutationObserver(()=>queueMicrotask(apply)).observe(document.documentElement,{childList:true,subtree:true});\ndocument.addEventListener('click',()=>setTimeout(apply,0),true);apply();\n})();\n''' % json.dumps(sets, ensure_ascii=False, separators=(',', ':'))
+          Path('html-local-photo-override.js').write_text(js, encoding='utf-8')
+
+          version = '20260819-1058'
+          for name in ('index.html', 'latest.html'):
+              p = Path(name)
+              s = p.read_text(encoding='utf-8')
+              s = re.sub(r'<script src="queendom-gallery-override\.js[^"]*"></script>', '', s)
+              s = re.sub(r'<script src="html-local-photo-override\.js[^"]*"></script>', '', s)
+              marker = '</body>'
+              tag = f'<script src="html-local-photo-override.js?v={version}"></script>'
+              s = s.replace(marker, tag + marker)
+              p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit local HTML-derived photos
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/grand-moment/html assets/grand-blanc/queendom html-local-photo-override.js index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Store HTML-derived wedding photos locally'
+          git push origin main
