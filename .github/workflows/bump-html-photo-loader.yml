@@ -1,0 +1,38 @@
+name: Bump HTML photo loader version
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bump-html-photo-loader.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Update loader cache version
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in ('index.html','latest.html'):
+              p=Path(name)
+              s=p.read_text(encoding='utf-8')
+              s=s.replace('queendom-gallery-override.js?v=20260819-1050','queendom-gallery-override.js?v=20260819-1114')
+              p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh uploaded-HTML photo loader'
+          git push origin main
