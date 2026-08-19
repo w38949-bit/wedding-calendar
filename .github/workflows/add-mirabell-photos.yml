@@ -1,0 +1,40 @@
+name: add-mirabell-photos
+on:
+  push:
+    paths:
+      - '.github/workflows/add-mirabell-photos.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Connect Mirabell Garden photos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('photos-20260819-1120.js')
+          s=p.read_text()
+          old="""  '그랜드 블랑':{\n    '퀸덤홀(화이트홀)':{source:'',imgs:seq('grand-blanc/queendom',9)}\n  },"""
+          new="""  '그랜드 블랑':{\n    '퀸덤홀(화이트홀)':{source:'',imgs:seq('grand-blanc/queendom',9)},\n    '미라벨가든':{source:'',imgs:seq('grand-blanc/mirabell-garden/wedding-hall-original-photos-2/assets/grand-blanc/mirabell-garden',5)}\n  },"""
+          if old in s:
+              s=s.replace(old,new,1)
+          p.write_text(s)
+
+          for fn in ['index.html','latest.html']:
+              q=Path(fn)
+              h=q.read_text()
+              h=re.sub(r'photos-20260819-1120\.js\?v=[^\"]+', 'photos-20260819-1120.js?v=20260819-1358', h)
+              q.write_text(h)
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add photos-20260819-1120.js index.html latest.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Add Mirabell Garden gallery photos'
+          git push
