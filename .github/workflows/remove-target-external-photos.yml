@@ -1,0 +1,82 @@
+name: Remove target external photos
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/remove-target-external-photos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove external photo sources for HTML-only halls
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('photos-20260819-1043.js')
+          s=p.read_text(encoding='utf-8')
+          head, sep, tail=s.partition("  '센텀사이언스':{")
+          if not sep:
+              raise SystemExit('PHOTO boundary not found')
+
+          for hall in ['시그니처홀','베일홀','클래식홀','엘라홀','오페라홀']:
+              pat=rf"('{re.escape(hall)}':\{{)source:'[^']*',imgs:\[[^\]]*\](\}})"
+              head,n=re.subn(pat,rf"\1source:'',imgs:[]\2",head,count=1)
+              if n!=1:
+                  raise SystemExit(f'failed to clear {hall}: {n}')
+
+          pat=r"('퀸덤홀\(화이트홀\)':\{)source:'[^']*',imgs:\[[^\]]*\](\})"
+          head,n=re.subn(pat,r"\1source:'',imgs:[]\2",head,count=1)
+          if n!=1:
+              raise SystemExit(f'failed to clear Queendom: {n}')
+
+          # Remove any legacy Grand Moment HTML/Naver append blocks if they still exist.
+          head=re.sub(r'/\* NAVER_GRANDMOMENT_EXTRA_START \*/.*?/\* NAVER_GRANDMOMENT_EXTRA_END \*/\s*','',head,flags=re.S)
+          head=re.sub(r'/\* HTML_GRANDMOMENT_PHOTOS_START \*/.*?/\* HTML_GRANDMOMENT_PHOTOS_END \*/\s*','',head,flags=re.S)
+
+          p.write_text(head+sep+tail,encoding='utf-8')
+
+          # Bump base gallery and local-loader cache versions in both app entry files.
+          for name in ['index.html','latest.html']:
+              q=Path(name)
+              t=q.read_text(encoding='utf-8')
+              t=t.replace('photos-20260819-1043.js','photos-20260819-1120.js')
+              t=t.replace('queendom-gallery-override.js?v=20260819-1114','queendom-gallery-override.js?v=20260819-1120')
+              q.write_text(t,encoding='utf-8')
+
+          # Rename the gallery module so old cached external-photo JS cannot be reused.
+          Path('photos-20260819-1120.js').write_text(p.read_text(encoding='utf-8'),encoding='utf-8')
+          PY
+      - name: Verify target URLs removed
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('photos-20260819-1120.js').read_text(encoding='utf-8')
+          target=s.split("  '센텀사이언스':{")[0]
+          forbidden=['i1.korea-iphone.com','postfiles.pstatic.net','m.blog.naver.com/rh30921','sojinee33.tistory.com','fodlem45.tistory.com']
+          bad=[x for x in forbidden if x in target]
+          if bad:
+              raise SystemExit('external target sources remain: '+repr(bad))
+          for hall in ['시그니처홀','베일홀','클래식홀','엘라홀','오페라홀','퀸덤홀(화이트홀)']:
+              if f"'{hall}':{{source:'',imgs:[]}}" not in target:
+                  raise SystemExit('target not empty: '+hall)
+          PY
+      - name: Commit cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos-20260819-1120.js index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Use only uploaded HTML photos for Grand Moment and Queendom'
+          git push origin main
