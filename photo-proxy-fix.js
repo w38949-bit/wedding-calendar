@@ -1,6 +1,6 @@
 (()=>{
   const proxy=(src)=>{
-    if(!src||(!src.includes('blog.kakaocdn.net')&&!src.includes('postfiles.pstatic.net')&&!src.includes('blogfiles.pstatic.net'))) return src;
+    if(!src||!src.includes('blog.kakaocdn.net')) return src;
     return 'https://wsrv.nl/?url='+encodeURIComponent(src)+'&w=1200&q=85&output=webp';
   };
   function fixImages(root=document){
