@@ -1,0 +1,71 @@
+name: Clean photo gallery labels and legacy extras
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/cleanup-photo-labels-and-extras.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove legacy extra photos and numbering
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          p=Path('photos-20260819-1031.js')
+          s=p.read_text(encoding='utf-8')
+
+          # Remove the old HTML Grand Moment supplemental-photo block completely.
+          s,n=re.subn(r'/\* HTML_GRANDMOMENT_PHOTOS_START \*/.*?/\* HTML_GRANDMOMENT_PHOTOS_END \*/\s*', '', s, flags=re.S)
+          print('legacy HTML_GM block removed:', n)
+
+          # If the block had no END marker, remove from its START marker through the
+          # loop that attaches HTML_GM_PHOTOS as extraImgs.
+          if 'HTML_GRANDMOMENT_PHOTOS_START' in s:
+              s,n2=re.subn(r'/\* HTML_GRANDMOMENT_PHOTOS_START \*/.*?Object\.entries\(HTML_GM_PHOTOS\).*?\n', '', s, flags=re.S)
+              print('fallback legacy block removed:', n2)
+
+          # Never show the misleading "additional originals being checked" suffix.
+          s=s.replace("${count}장${count<10?' · 추가 원본 확인 중':''}", "${count}장")
+          s=s.replace("${count}장${count<10?\" · 추가 원본 확인 중\":\"\"}", "${count}장")
+
+          # Remove per-photo numbering. Keep only a simple source link.
+          s=re.sub(r'>사진 \$\{i\+1\} · 출처 보기</a>', '>출처 보기</a>', s)
+          s=re.sub(r'>사진 \$\{i \+ 1\} · 출처 보기</a>', '>출처 보기</a>', s)
+
+          # Broken-photo placeholder CSS is no longer needed; failed cards are removed.
+          s=re.sub(r'\.photoitem\.broken img\{display:none\}\.photoitem\.broken>a:first-child:after\{[^}]*\}', '', s)
+
+          p.write_text(s,encoding='utf-8')
+
+          # Force a brand-new filename so browsers cannot reuse the prior gallery JS.
+          new=Path('photos-20260819-1043.js')
+          new.write_text(s,encoding='utf-8')
+          for name in ('index.html','latest.html'):
+              q=Path(name)
+              t=q.read_text(encoding='utf-8')
+              t=t.replace('photos-20260819-1031.js','photos-20260819-1043.js')
+              t=re.sub(r'photo-proxy-fix\.js\?v=[^\"\']+', 'photo-proxy-fix.js?v=20260819-1043', t)
+              q.write_text(t,encoding='utf-8')
+          PY
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos-20260819-1043.js index.html latest.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Remove legacy extra photos and gallery numbering'
+          git push origin main
