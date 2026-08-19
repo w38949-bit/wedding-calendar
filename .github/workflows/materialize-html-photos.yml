@@ -19,196 +19,136 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Match HTML-extracted photos and save local JPGs
+      - name: Save exact images extracted from supplied HTMLs
         shell: bash
         run: |
-          python -m pip install --quiet requests beautifulsoup4 pillow
+          python -m pip install --quiet requests pillow
           python - <<'PY'
           from pathlib import Path
           from urllib.parse import quote
-          from bs4 import BeautifulSoup
           from PIL import Image, ImageOps
-          import io, re, requests, shutil
+          import io, json, re, requests, shutil
 
-          EXPECTED = {'gb/01.jpg': 'c6ccdb85a54d8b9b',
- 'gb/02.jpg': '872f2361c5870179',
- 'gb/03.jpg': '616323734b218039',
- 'gb/04.jpg': '9c1c4b5b4f4b0b17',
- 'gb/05.jpg': '65f080362486f9e8',
- 'gb/06.jpg': '0cc1878638288808',
- 'gb/07.jpg': 'e6e30fcccecf19df',
- 'gb/08.jpg': '0e8e4c0f2e6ccd8f',
- 'gb/09.jpg': 'ee883c3707c9bed1',
- 'gm/classic-01.jpg': '554ecc690b0e0f0f',
- 'gm/classic-02.jpg': '339ad6eccc0d0f0f',
- 'gm/classic-03.jpg': '863272f3f7732733',
- 'gm/classic-04.jpg': '74921632b2125287',
- 'gm/ella-01.jpg': '6ccc2b234d172968',
- 'gm/ella-02.jpg': '8fcc4d698e1569c8',
- 'gm/ella-03.jpg': '3034d5cbc21e3e4f',
- 'gm/ella-04.jpg': 'b134226a6a1131ef',
- 'gm/opera-01.jpg': '49535b3e329da6d7',
- 'gm/opera-02.jpg': 'cd99337b6b764627',
- 'gm/opera-03.jpg': '416833375d0f9180',
- 'gm/signature-01.jpg': '3371b2f0d88d0d84',
- 'gm/signature-02.jpg': '59191f272b9f8780',
- 'gm/signature-03.jpg': 'ada2a6afadb7a572',
- 'gm/signature-04.jpg': 'db6b2babe715c7c3',
- 'gm/signature-05.jpg': '3e3660b236963662',
- 'gm/signature-06.jpg': '560d0f1f326b4f1a',
- 'gm/veil-01.jpg': 'cf4d69ba4f296d68',
- 'gm/veil-02.jpg': '460d8dcc690f4acc',
- 'gm/veil-03.jpg': 'da9f97a72dc9f33a'}
-
-          SOURCES = {
-              'gm': 'https://blog.naver.com/PostView.naver?blogId=qorrkdnjs&logNo=223451943421',
-              'gb': 'https://blog.naver.com/PostView.naver?blogId=rh30921&logNo=224144337505',
+          GM = {
+            'classic': [
+              'https://postfiles.pstatic.net/MjAyNDA1MTlfMjAz/MDAxNzE2MTMwNTU0OTE5.GVtPew6Dc5jr5Ec_bV_jvlkJMlWGqNq0Sp6zPwETsngg.b9pY3v5ADiVMkrUfwLvrO0rDjpKDYQ7ah_tdNdUmxTUg.JPEG/SE-f3be011d-01f5-45b2-b72f-19e482102fdb.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjcg/MDAxNzE2MTMxMTMyODYw.lE6dCuU_PONSCvRRJrn9kwepXLFC22fJY2i465m1O9Eg._DcFwPQgdbsC_ekX3R_37sm576KKJLj2gQBvwu_WMWgg.JPEG/SE-782e354d-86df-496e-8d57-7ce2c8996e62.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjIg/MDAxNzE2MTMxMjc2ODg4.tC_Qflr1izQcCapl_d7uekGj49bPf4LG4FwL0Fph-5Ug.42NtHy7-yjmOFIXUtXUFK6kHogydC47zJnMBTu0ersYg.JPEG/SE-37c1fcf6-62b1-4b26-b667-9341300c78ef.jpg?type=w386',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjIy/MDAxNzE2MTMxMzE2Mjcw.xLuKt-j2i7UJrsIY0sWhJ5v_YoEsfI6aR_Hc36Qu4x4g.yZIJewSIHa6EqnCOar3hO4Pk134jDh64I8nLjecrteEg.JPEG/SE-b7cb60cc-8f6a-4625-905a-118964aef97f.jpg?type=w386'
+            ],
+            'ella': [
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTIw/MDAxNzE2MTMyMDQxMTgw.ktA5GHw0cZZLbrhgv7X5dA0WJihaPKKTZrwpM_mpqJYg.xt_mcVN0Ktqs0OYsyyXCoygUy0vnARrRViLueEPoY4og.JPEG/SE-b0b914e8-7dd5-43ca-b34b-432d2e9c51e4.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjA4/MDAxNzE2MTMyMDc2Njgz.bWVcpi2Fb0C8AHhGjonqKqNOJrHohrQi7i3qwDHJjFcg.agXqauQMUNkOBiCxRKqQmMwaThLU0TjQq4gdeMPQ0mkg.JPEG/SE-c9622706-eb50-4593-b1b8-41630318376a.jpg?type=w386',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfNjQg/MDAxNzE2MTMxOTQxMzgy.AKuhnxpkpub8pub0Ueh5sJ8AyINtb2mqLVsNQyuS0PAg.D1L8w0UiW1ohoKoS-Z-oSpA4z9APmsze2vEBrwFOZOog.JPEG/KakaoTalk_Photo_2024-05-02-03-08-37_022.jpeg?type=w386',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTgw/MDAxNzE2MTMxOTQxNzI0.6WskO29_Td44l4kbC0YNcZOUSQzcBmlxQaBeO6fkB-8g.iGAa6zYD4DbaKmtAUn3dOfSWJjFSO7BF4LL8_QxaZicg.JPEG/KakaoTalk_Photo_2024-05-02-03-08-36_021.jpeg?type=w773'
+            ],
+            'veil': [
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjIy/MDAxNzE2MTMxNzAxMjYy.G4arIOoUDLF_74HeMSRwNO-HXZqC4IvtbrA-_8HULlMg.fskOVgwd3n324urH6dQzB5TBQm5q5VWy1crAWpecZRAg.JPEG/SE-924d08bc-acaf-49b8-8ed7-17d757aa9cbf.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfNzcg/MDAxNzE2MTM1MTYzNjky.yQZnr6cATE_2h8THiYFTjRqmQMdOVSikRpSGY5OVD6gg.KctUBhYwsMY2y3RNDwVewPbGkUR3XeOz-DFF5CqTnesg.JPEG/SE-45113b87-4dfc-4de1-90ec-067175baf1e0.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTI5/MDAxNzE2MTMxNjI1MTc2.G1H-lfq9nkkFvvf-bi-2RsDdg0zxzEUZwF28z029664g.ePO--kUtOsoWg3Dlvckl-p3kjaN5RiCPgry0LUEWYnYg.JPEG/KakaoTalk_Photo_2024-05-02-03-08-32_015.jpeg?type=w773'
+            ],
+            'opera': [
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMSAg/MDAxNzE2MTM1NjI0Mzc4.3FexpYf4DiU2eMl0eiv5YQfuhwtqS23XCi8BQbXhePMg.5UkULGxat3Q2IAy9Xj-cUm1GgHky5dkQdeEblcBuiMcg.JPEG/SE-e1dbd95e-d1ac-470e-99c2-46a95a6478ca.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjM4/MDAxNzE2MTMyMTY5MjYz.XeK3EBjgKvCMtDIlz5UzV9DJshtdeLKyaliB596gqvUg.POwP0KII2aarkkgsEmsZoSg2cpYtTPWpwCJ89r6UtaMg.JPEG/KakaoTalk_Photo_2024-05-02-03-08-27_008.jpeg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTU4/MDAxNzE2MTMyODEyMjk0.-2rYhmPfclxYSMy0arI1eE0gQBdV18kPFHvIstisU3Yg.yH_op3lWM3dKLVSYOjmJ24ZxotOOJf7voJrMahOYgb4g.JPEG/IMG_8479.jpg?type=w773'
+            ],
+            'signature': [
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfOTgg/MDAxNzE2MTMyMzg2Mjk5._s8j_Oi7RQCp4Ae7pdUiFWc_mtHS8G6BdwLKgPBxNaMg.CVlICyoUv3L3_D8_TDheyAr0Eti3t9FoaNF0-y7QQbwg.JPEG/SE-8025d2f0-382d-4a8e-ab7c-18da226fc271.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjYg/MDAxNzE2MTMyNTQ2MjA2.A31qsYd2swsFLX6orsUAcgolgTaFx8OWEY44YAc9V08g.7oK4mJU1K6uehDnZj5g8IMKPzyDnwWsujKIdu0wbpVYg.JPEG/SE-54c1d615-407e-4077-b23a-bd978d42d2f5.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfNjkg/MDAxNzE2MTMyNDU0NjQw.1J0XFRilBNknyQKBPLkvvNQ3LDyZmcMbAUAuGpnzy8Yg.XzlsIPcYJraoesnsEfTCX_8rQPhOhkIXgSuPf5CMlwog.JPEG/SE-722499c6-e4f0-4a00-903a-db1f01f6b553.jpg?type=w773',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMjMy/MDAxNzE2MTMyMjgyMDQ3.-5g8WeDf1NhU-mWHDU_Xnm5SCZ7z2IWSFo7qAj26w0wg.Sd6qBG_MK3gM8tvZvObbOCtCr3U2zkp8pwXz8kKjmx0g.JPEG/KakaoTalk_Photo_2024-05-02-03-08-43_029.jpeg?type=w386',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTE4/MDAxNzE2MTMyNDk3MDQ0.UF_pPLk8B3vMQDGT5YJYOLQ5iKOFL3UAvGzUKk2vMTQg.PXzLa2YdtGILWBI2ckbuK5YHB-2jyqfsIPtHV2UVpa4g.JPEG/SE-bff900f0-05eb-4440-a082-438f4ccc666b.jpg?type=w386',
+              'https://postfiles.pstatic.net/MjAyNDA1MjBfMTMx/MDAxNzE2MTMyMzEwNDc4.y4p8W9XIIajg4IDPrucVaWOAEF8LpRSr_G40It4yiiAg.nP3b6EBO-qDGF5OyrEnVYiIi9K2FGLCN_f9Io5EbCmAg.JPEG/KakaoTalk_Photo_2024-05-02-03-09-23_004.jpeg?type=w773'
+            ]
           }
-          HEADERS = {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-              'Referer': 'https://blog.naver.com/',
-              'Accept-Language': 'ko-KR,ko;q=0.9',
-          }
-          WORKER = 'https://naver-img-proxy.5126537.workers.dev/?url='
 
-          def dhash_image(im, hash_size=8):
-              im = ImageOps.exif_transpose(im).convert('L').resize((hash_size + 1, hash_size))
-              px = list(im.getdata())
-              value = 0
-              for y in range(hash_size):
-                  row = px[y * (hash_size + 1):(y + 1) * (hash_size + 1)]
-                  for x in range(hash_size):
-                      value = (value << 1) | int(row[x] > row[x + 1])
-              return f'{value:016x}'
+          GB = json.loads(Path('queendom-target-urls.json').read_text(encoding='utf-8'))
+          if len(GB) != 9:
+            raise SystemExit(f'Expected 9 Queendom URLs, got {len(GB)}')
 
-          def hdist(a, b):
-              return (int(a, 16) ^ int(b, 16)).bit_count()
-
-          def fetch_page_images(url):
-              r = requests.get(url, headers=HEADERS, timeout=40)
-              r.raise_for_status()
-              soup = BeautifulSoup(r.text, 'html.parser')
-              urls = []
-              for img in soup.select('img'):
-                  src = img.get('data-lazy-src') or img.get('data-src') or img.get('src') or ''
-                  if 'pstatic.net' not in src:
-                      continue
-                  src = src.replace('&amp;', '&')
-                  if src.startswith('//'):
-                      src = 'https:' + src
-                  if src not in urls:
-                      urls.append(src)
-              return urls
+          worker = 'https://naver-img-proxy.5126537.workers.dev/?url='
+          ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36'
 
           def fetch_image(url):
-              tries = [
-                  WORKER + quote(url, safe=''),
-                  url,
-              ]
-              last = None
-              for target in tries:
-                  try:
-                      headers = {'User-Agent': HEADERS['User-Agent']}
-                      if target == url:
-                          headers['Referer'] = HEADERS['Referer']
-                      r = requests.get(target, headers=headers, timeout=45, allow_redirects=True)
-                      r.raise_for_status()
-                      im = Image.open(io.BytesIO(r.content))
-                      im.load()
-                      return im
-                  except Exception as e:
-                      last = e
-              raise last
+            errors=[]
+            for target,headers in [
+              (worker + quote(url, safe=''), {'User-Agent':ua}),
+              (url, {'User-Agent':ua,'Referer':'https://blog.naver.com/'})
+            ]:
+              try:
+                r=requests.get(target,headers=headers,timeout=45,allow_redirects=True)
+                r.raise_for_status()
+                im=Image.open(io.BytesIO(r.content)); im.load()
+                return ImageOps.exif_transpose(im).convert('RGB')
+              except Exception as e:
+                errors.append(str(e))
+            raise RuntimeError(' | '.join(errors))
 
-          def load_candidates(source_key):
-              urls = fetch_page_images(SOURCES[source_key])
-              print(source_key, 'candidate URLs', len(urls))
-              candidates = []
-              for i, url in enumerate(urls):
-                  try:
-                      im = fetch_image(url)
-                      h = dhash_image(im)
-                      candidates.append((i, url, h, im.copy()))
-                  except Exception as e:
-                      print('skip', i, url[:100], e)
-              print(source_key, 'downloaded candidates', len(candidates))
-              return candidates
+          gmroot=Path('assets/grand-moment/html')
+          gbroot=Path('assets/grand-blanc/queendom')
+          for root in (gmroot,gbroot):
+            if root.exists(): shutil.rmtree(root)
+            root.mkdir(parents=True,exist_ok=True)
 
-          def output_path(key):
-              _, name = key.split('/', 1)
-              if key.startswith('gm/'):
-                  return Path('assets/grand-moment/html') / name
-              return Path('assets/grand-blanc/queendom') / name
+          for hall,urls in GM.items():
+            for i,url in enumerate(urls,1):
+              im=fetch_image(url)
+              out=gmroot/f'{hall}-{i:02d}.jpg'
+              im.thumbnail((1600,1600))
+              im.save(out,'JPEG',quality=88,optimize=True)
+              Image.open(out).verify()
 
-          for folder in (Path('assets/grand-moment/html'), Path('assets/grand-blanc/queendom')):
-              if folder.exists():
-                  shutil.rmtree(folder)
-              folder.mkdir(parents=True, exist_ok=True)
+          for i,url in enumerate(GB,1):
+            im=fetch_image(url)
+            out=gbroot/f'{i:02d}.jpg'
+            im.thumbnail((1600,1600))
+            im.save(out,'JPEG',quality=88,optimize=True)
+            Image.open(out).verify()
 
-          for source_key in ('gm', 'gb'):
-              candidates = load_candidates(source_key)
-              expected = [(k, h) for k, h in EXPECTED.items() if k.startswith(source_key + '/')]
-              used = set()
-              for key, target_hash in expected:
-                  ranked = sorted(
-                      (hdist(target_hash, h), idx, url, im)
-                      for idx, url, h, im in candidates
-                      if idx not in used
-                  )
-                  if not ranked:
-                      raise SystemExit(f'No candidates left for {key}')
-                  dist, idx, url, im = ranked[0]
-                  print('match', key, 'distance', dist, 'candidate', idx)
-                  if dist > 14:
-                      raise SystemExit(f'Image fingerprint mismatch for {key}: distance={dist}')
-                  used.add(idx)
-                  out = output_path(key)
-                  im = ImageOps.exif_transpose(im).convert('RGB')
-                  im.thumbnail((1600, 1600))
-                  im.save(out, 'JPEG', quality=88, optimize=True)
+          if len(list(gmroot.glob('*.jpg'))) != 20: raise SystemExit('GM local count != 20')
+          if len(list(gbroot.glob('*.jpg'))) != 9: raise SystemExit('GB local count != 9')
 
-          expected_gm = sorted(k for k in EXPECTED if k.startswith('gm/'))
-          expected_gb = sorted(k for k in EXPECTED if k.startswith('gb/'))
-          if len(list(Path('assets/grand-moment/html').glob('*.jpg'))) != len(expected_gm):
-              raise SystemExit('Grand Moment local image count mismatch')
-          if len(list(Path('assets/grand-blanc/queendom').glob('*.jpg'))) != len(expected_gb):
-              raise SystemExit('Grand Blanc local image count mismatch')
-
-          sets = {
-              '그랜드 모먼트': {
-                  '클래식홀': [f'assets/grand-moment/html/classic-{i:02d}.jpg' for i in range(1, 5)],
-                  '엘라홀': [f'assets/grand-moment/html/ella-{i:02d}.jpg' for i in range(1, 5)],
-                  '베일홀': [f'assets/grand-moment/html/veil-{i:02d}.jpg' for i in range(1, 4)],
-                  '오페라홀': [f'assets/grand-moment/html/opera-{i:02d}.jpg' for i in range(1, 4)],
-                  '시그니처홀': [f'assets/grand-moment/html/signature-{i:02d}.jpg' for i in range(1, 7)],
-              },
-              '그랜드 블랑': {
-                  '퀸덤홀(화이트홀)': [f'assets/grand-blanc/queendom/{i:02d}.jpg' for i in range(1, 10)],
-              },
+          p=Path('photos-20260819-1031.js')
+          s=p.read_text(encoding='utf-8')
+          source_gm='https://m.blog.naver.com/qorrkdnjs/223451943421'
+          source_gb='https://m.blog.naver.com/rh30921/224144337505'
+          replacements={
+            '시그니처홀': [f'assets/grand-moment/html/signature-{i:02d}.jpg' for i in range(1,7)],
+            '베일홀': [f'assets/grand-moment/html/veil-{i:02d}.jpg' for i in range(1,4)],
+            '클래식홀': [f'assets/grand-moment/html/classic-{i:02d}.jpg' for i in range(1,5)],
+            '엘라홀': [f'assets/grand-moment/html/ella-{i:02d}.jpg' for i in range(1,5)],
+            '오페라홀': [f'assets/grand-moment/html/opera-{i:02d}.jpg' for i in range(1,4)],
           }
+          for hall,imgs in replacements.items():
+            arr=','.join(json.dumps(x,ensure_ascii=False) for x in imgs)
+            pat=rf"'{re.escape(hall)}':\{{source:[^,]+,imgs:\[.*?\]\}}"
+            rep=f"'{hall}':{{source:{json.dumps(source_gm,ensure_ascii=False)},imgs:[{arr}]}}"
+            s,n=re.subn(pat,rep,s,count=1,flags=re.S)
+            if n!=1: raise SystemExit(f'Failed to replace {hall}: {n}')
 
-          import json
-          js = '''(()=>{\nconst LOCAL=%s;\nfunction active(sel){return document.querySelector(sel)?.textContent?.trim()||''}\nfunction apply(){\n if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;\n const venue=active('#vt .tab.a'),hall=active('#ht .tab.a'),imgs=LOCAL[venue]?.[hall];\n if(!imgs)return;\n const res=document.getElementById('res'),grid=res?.querySelector('.photogrid');\n if(!grid)return;\n const key=venue+'|'+hall;if(grid.dataset.htmlLocal===key)return;grid.dataset.htmlLocal=key;\n const meta=res.querySelector('.photo-meta span');if(meta)meta.textContent=`HTML에서 추출한 사진 ${imgs.length}장`;\n const source=res.querySelector('.photo-meta a');if(source)source.remove();\n grid.innerHTML=imgs.map((src,i)=>`<div class="photoitem"><a href="${src}" target="_blank" rel="noopener noreferrer"><img src="${src}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.photoitem')?.remove()"></a></div>`).join('');\n}\nnew MutationObserver(()=>queueMicrotask(apply)).observe(document.documentElement,{childList:true,subtree:true});\ndocument.addEventListener('click',()=>setTimeout(apply,0),true);apply();\n})();\n''' % json.dumps(sets, ensure_ascii=False, separators=(',', ':'))
-          Path('html-local-photo-override.js').write_text(js, encoding='utf-8')
+          qimgs=','.join(json.dumps(f'assets/grand-blanc/queendom/{i:02d}.jpg') for i in range(1,10))
+          qrep=f"'퀸덤홀(화이트홀)':{{source:{json.dumps(source_gb,ensure_ascii=False)},imgs:[{qimgs}]}}"
+          s,n=re.subn(r"'퀸덤홀\(화이트홀\)':\{source:[^,]+,imgs:\[.*?\]\}",qrep,s,count=1,flags=re.S)
+          if n!=1: raise SystemExit(f'Failed to replace Queendom: {n}')
 
-          version = '20260819-1058'
-          for name in ('index.html', 'latest.html'):
-              p = Path(name)
-              s = p.read_text(encoding='utf-8')
-              s = re.sub(r'<script src="queendom-gallery-override\.js[^"]*"></script>', '', s)
-              s = re.sub(r'<script src="html-local-photo-override\.js[^"]*"></script>', '', s)
-              marker = '</body>'
-              tag = f'<script src="html-local-photo-override.js?v={version}"></script>'
-              s = s.replace(marker, tag + marker)
-              p.write_text(s, encoding='utf-8')
+          s=s.replace("${count<10?' · 추가 원본 확인 중':''}",'')
+          s=s.replace('사진 ${i+1} · 출처 보기','출처 보기')
+          p.write_text(s,encoding='utf-8')
+
+          version='20260819-1108'
+          for name in ('index.html','latest.html'):
+            q=Path(name); t=q.read_text(encoding='utf-8')
+            t=re.sub(r'<script src="queendom-gallery-override\.js[^"]*"></script>','',t)
+            t=re.sub(r'photos-20260819-1031\.js(?:\?v=[^\"]+)?',f'photos-20260819-1031.js?v={version}',t)
+            q.write_text(t,encoding='utf-8')
           PY
 
-      - name: Commit local HTML-derived photos
+      - name: Commit actual local JPGs
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add assets/grand-moment/html assets/grand-blanc/queendom html-local-photo-override.js index.html latest.html
+          git add assets/grand-moment/html assets/grand-blanc/queendom photos-20260819-1031.js index.html latest.html
           git diff --cached --quiet && exit 0
-          git commit -m 'Store HTML-derived wedding photos locally'
+          git commit -m 'Store supplied HTML photos as local JPGs'
           git push origin main
