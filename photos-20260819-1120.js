@@ -67,7 +67,9 @@ style.textContent=`
 .photosource{display:block;padding:8px 10px;color:var(--muted);font-size:11px;text-decoration:none}
 .photo-empty{margin-top:12px;padding:24px 14px;border:1px dashed var(--line);border-radius:14px;text-align:center;color:var(--muted);font-size:13px}
 .photo-empty a{display:inline-block;margin-top:8px;color:var(--strong);font-weight:700}
-@media(max-width:620px){.photogrid{columns:1}}
+.photogrid.centum-hotel-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;columns:auto!important;align-items:start}
+.photogrid.centum-hotel-grid .photoitem{display:block;width:100%;margin:0}
+@media(max-width:620px){.photogrid{columns:1}.photogrid.centum-hotel-grid{grid-template-columns:1fr}}
 `;
 document.head.appendChild(style);
 
@@ -111,7 +113,8 @@ function renderPhotoGallery(){
   const sourceLink=g.source?`<a href="${g.source}" target="_blank" rel="noopener noreferrer">출처 페이지 ↗</a>`:'';
   const meta=`<div class="photo-meta"><span>확인 가능한 원본 사진 ${entries.length}장</span>${sourceLink}</div>`;
   if(!entries.length){resBox.innerHTML=meta+'<div class="photo-empty">등록된 사진이 없습니다.</div>';return;}
-  resBox.innerHTML=meta+`<div class="photogrid">${entries.map((it,i)=>`<div class="photoitem"><a href="${it.src}" target="_blank" rel="noopener noreferrer"><img src="${it.src}" loading="lazy" alt="${photoVenue} ${photoHall||''} 사진 ${i+1}" referrerpolicy="no-referrer"></a>${it.source?`<a class="photosource" href="${it.source}" target="_blank" rel="noopener noreferrer">출처 보기</a>`:''}</div>`).join('')}</div>`;
+  const gridClass=photoVenue==='센텀호텔'?'photogrid centum-hotel-grid':'photogrid';
+  resBox.innerHTML=meta+`<div class="${gridClass}">${entries.map((it,i)=>`<div class="photoitem"><a href="${it.src}" target="_blank" rel="noopener noreferrer"><img src="${it.src}" loading="lazy" alt="${photoVenue} ${photoHall||''} 사진 ${i+1}" referrerpolicy="no-referrer"></a>${it.source?`<a class="photosource" href="${it.source}" target="_blank" rel="noopener noreferrer">출처 보기</a>`:''}</div>`).join('')}</div>`;
 }
 
 const baseSetView=setView;
