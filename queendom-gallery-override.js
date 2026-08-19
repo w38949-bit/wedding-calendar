@@ -13,10 +13,9 @@
       '퀸덤홀(화이트홀)':seq('grand-blanc/queendom',9)
     }
   };
-  const VERSION='20260819-1226';
+  const VERSION='20260819-1230';
   const active=sel=>document.querySelector(sel)?.textContent?.trim()||'';
-  let renderToken=0;
-  let applying=false;
+  let runId=0;
 
   const preload=src=>new Promise(resolve=>{
     const im=new Image();
@@ -25,10 +24,7 @@
     im.src=`${src}?v=${VERSION}`;
   });
 
-  const imgCard=(item,venue,hall,i,cls='')=>`<div class="local-gallery-card ${cls}"><img src="${item.src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${i+1}" onerror="this.closest('.local-gallery-card')?.remove()"></div>`;
-
-  async function apply(){
-    if(applying)return;
+  async function draw(){
     if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
     const venue=active('#vt .tab.a');
     const hall=active('#ht .tab.a');
@@ -36,75 +32,37 @@
     if(!imgs)return;
     const res=document.getElementById('res');
     if(!res)return;
-    const key=`${venue}|${hall}`;
-    if(res.querySelector('.local-gallery')?.dataset.key===key)return;
+    const myRun=++runId;
+    res.innerHTML='<div class="local-photo-loading">사진 불러오는 중…</div>';
+    const items=(await Promise.all(imgs.map((src,i)=>preload(src).then(x=>x&&({...x,index:i}))))).filter(Boolean);
+    if(myRun!==runId)return;
+    if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
+    if(active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
 
-    applying=true;
-    const token=++renderToken;
-    res.innerHTML=`<div class="local-gallery-meta">저장된 원본 사진 ${imgs.length}장</div><div class="local-gallery-loading">사진 배치 중…</div>`;
-    try{
-      const loaded=(await Promise.all(imgs.map(preload))).filter(Boolean).map((x,i)=>({...x,idx:i}));
-      if(token!==renderToken)return;
-      if(document.getElementById('dl')?.textContent?.trim()!=='웨딩홀 사진')return;
-      if(active('#vt .tab.a')!==venue||active('#ht .tab.a')!==hall)return;
-
-      const landscapes=loaded.filter(x=>x.ratio>=1.18).sort((a,b)=>b.ratio-a.ratio);
-      const portraits=loaded.filter(x=>x.ratio<1.18).sort((a,b)=>Math.abs(a.ratio-0.78)-Math.abs(b.ratio-0.78));
-      const blocks=[];
-
-      while(portraits.length>=2){
-        const a=portraits.shift(),b=portraits.shift();
-        blocks.push(`<div class="local-gallery-pair">${imgCard(a,venue,hall,a.idx)}${imgCard(b,venue,hall,b.idx)}</div>`);
-        if(landscapes.length){
-          const wide=landscapes.shift();
-          blocks.push(imgCard(wide,venue,hall,wide.idx,'local-gallery-wide'));
-        }
-      }
-      if(portraits.length){
-        const a=portraits.shift();
-        blocks.push(`<div class="local-gallery-single">${imgCard(a,venue,hall,a.idx)}</div>`);
-      }
-      while(landscapes.length){
-        const a=landscapes.shift();
-        blocks.push(imgCard(a,venue,hall,a.idx,'local-gallery-wide'));
-      }
-
-      res.innerHTML=`<div class="local-gallery-meta">저장된 원본 사진 ${loaded.length}장</div><div class="local-gallery" data-key="${key}">${blocks.join('')}</div>`;
-    } finally {
-      applying=false;
+    const left=[],right=[];
+    let lh=0,rh=0;
+    for(const item of items){
+      const estimated=1/item.ratio;
+      if(lh<=rh){left.push(item);lh+=estimated+0.04}else{right.push(item);rh+=estimated+0.04}
     }
+    const card=x=>`<a class="local-photo-card" href="${x.src}" target="_blank" rel="noopener noreferrer"><img src="${x.src}?v=${VERSION}" loading="lazy" alt="${venue} ${hall} 사진 ${x.index+1}"></a>`;
+    res.innerHTML=`<div class="local-photo-meta">저장된 원본 사진 ${items.length}장</div><div class="local-photo-columns"><div>${left.map(card).join('')}</div><div>${right.map(card).join('')}</div></div>`;
   }
 
   const style=document.createElement('style');
   style.textContent=`
-    .local-gallery-meta{width:min(100%,860px);margin:14px auto 0;text-align:center;color:var(--muted);font-size:12px}
-    .local-gallery{width:min(100%,860px);margin:12px auto 0;display:flex;flex-direction:column;gap:14px}
-    .local-gallery-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
-    .local-gallery-single{display:flex;justify-content:center}
-    .local-gallery-single .local-gallery-card{width:calc(50% - 7px)}
-    .local-gallery-card{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#f1ede8;box-shadow:0 3px 12px rgba(60,45,35,.06)}
-    .local-gallery-card img{display:block!important;width:100%!important;height:auto!important;aspect-ratio:auto!important;object-fit:contain!important;margin:0!important;background:#f1ede8!important}
-    .local-gallery-wide{width:100%}
-    .local-gallery-loading{width:min(100%,860px);margin:12px auto;padding:24px;text-align:center;color:#8a817a}
-    .photo-meta a,.photosource{display:none!important}
-    @media(max-width:620px){
-      .local-gallery{width:min(100%,560px);gap:12px}
-      .local-gallery-pair{grid-template-columns:1fr;gap:12px}
-      .local-gallery-single .local-gallery-card{width:100%}
-    }
+    .local-photo-meta{max-width:860px;margin:14px auto 10px;text-align:center;color:var(--muted);font-size:12px}
+    .local-photo-columns{max-width:860px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+    .local-photo-columns>div{display:flex;flex-direction:column;gap:14px;min-width:0}
+    .local-photo-card{display:block;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#f1ede8;box-shadow:0 3px 12px rgba(60,45,35,.06)}
+    .local-photo-card img{display:block;width:100%;height:auto;aspect-ratio:auto;object-fit:contain;margin:0;background:#f1ede8}
+    .local-photo-loading{max-width:860px;margin:14px auto;padding:24px;text-align:center;color:var(--muted)}
+    @media(max-width:620px){.local-photo-columns{grid-template-columns:1fr;gap:12px}.local-photo-columns>div{gap:12px}}
   `;
   document.head.appendChild(style);
 
-  let scheduled=false;
-  const scheduleApply=()=>{
-    if(scheduled)return;
-    scheduled=true;
-    requestAnimationFrame(()=>{
-      scheduled=false;
-      apply();
-    });
-  };
-  new MutationObserver(()=>{if(!applying)scheduleApply()}).observe(document.documentElement,{childList:true,subtree:true});
-  document.addEventListener('click',()=>setTimeout(scheduleApply,0),true);
-  scheduleApply();
+  document.addEventListener('click',e=>{
+    if(e.target.closest('#photoTab,#vt .tab,#ht .tab'))setTimeout(draw,0);
+  },true);
+  window.addEventListener('load',()=>setTimeout(draw,0));
 })();
